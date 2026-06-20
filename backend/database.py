@@ -7,9 +7,18 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./cardvault.db")
 
+# Render/Heroku hand out "postgres://" URLs, but SQLAlchemy 2.0 only accepts the
+# "postgresql://" scheme — normalise so a managed Postgres just works.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
+
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
+    connect_args={"check_same_thread": False} if IS_SQLITE else {},
+    # Managed Postgres drops idle connections; pre-ping avoids stale-connection errors.
+    pool_pre_ping=not IS_SQLITE,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -33,7 +42,13 @@ def run_migrations() -> None:
     SQLAlchemy's create_all() makes new tables but never alters existing ones, so
     we add the new ``user_id`` columns by hand if they're missing. Existing rows
     keep user_id = NULL (orphaned / hidden), matching the 'start fresh' choice.
+
+    The DDL below (DATETIME, BOOLEAN DEFAULT 0) is SQLite-specific. On Postgres a
+    fresh database already has every column via create_all(), so we skip this.
     """
+    if not IS_SQLITE:
+        return
+
     from sqlalchemy import inspect, text
 
     inspector = inspect(engine)

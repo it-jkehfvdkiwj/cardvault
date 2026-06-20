@@ -1,3 +1,9 @@
+databases:
+  - name: cardvault-db
+    plan: free
+    databaseName: cardvault
+    user: cardvault
+
 services:
   - type: web
     name: cardvault
@@ -8,8 +14,11 @@ services:
     envVars:
       - key: JWT_SECRET
         generateValue: true
+      # Pulled automatically from the managed Postgres above.
       - key: DATABASE_URL
-        value: sqlite:///./cardvault.db
+        fromDatabase:
+          name: cardvault-db
+          property: connectionString
       - key: UPLOAD_DIR
         value: uploads
       - key: ALLOW_DEMO_BILLING
