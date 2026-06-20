@@ -16,14 +16,14 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Nav */}
-      <header className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto w-full">
-        <div className="flex items-center gap-2">
-          <Vault className="text-pokemon-yellow w-7 h-7" />
-          <span className="font-bold text-xl tracking-wide text-pokemon-yellow">CardVault</span>
+      <header className="flex items-center justify-between gap-2 px-4 sm:px-6 py-4 max-w-6xl mx-auto w-full">
+        <div className="flex items-center gap-2 min-w-0">
+          <Vault className="text-pokemon-yellow w-7 h-7 shrink-0" />
+          <span className="font-bold text-xl tracking-wide text-pokemon-yellow truncate">CardVault</span>
         </div>
-        <div className="flex items-center gap-2">
-          <Link to="/login" className="btn-ghost text-sm">Anmelden</Link>
-          <Link to="/login?mode=register" className="btn-primary text-sm">Kostenlos starten</Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link to="/login" className="btn-ghost text-sm px-3 sm:px-4">Anmelden</Link>
+          <Link to="/login?mode=register" className="btn-primary text-sm px-3 sm:px-4 whitespace-nowrap">Kostenlos starten</Link>
         </div>
       </header>
 

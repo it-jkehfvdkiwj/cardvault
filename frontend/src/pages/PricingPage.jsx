@@ -53,7 +53,7 @@ export default function PricingPage() {
   const plans = data?.plans || []
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-6">
       <div className="text-center">
         <h1 className="text-2xl font-bold">Upgrade your collection</h1>
         <p className="text-gray-400 text-sm mt-1">

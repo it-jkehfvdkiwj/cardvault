@@ -95,7 +95,7 @@ export default function EbayExportModal({ onClose, forTradeDefault = false, card
           ) : (
             <>
               {/* Marketplace + scope */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Marketplace</label>
                   <select className="input" value={opts.site} onChange={(e) => set('site', e.target.value)}>
@@ -111,7 +111,7 @@ export default function EbayExportModal({ onClose, forTradeDefault = false, card
               </div>
 
               {/* Pricing */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Price ×</label>
                   <input type="number" step="0.05" min="0.1" className="input"

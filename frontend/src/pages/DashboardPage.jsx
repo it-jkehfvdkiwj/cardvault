@@ -33,7 +33,7 @@ export default function DashboardPage() {
   const eur = (n) => `${(n || 0).toFixed(2).replace('.', ',')} €`
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold">
           Hallo, {user?.display_name} 👋

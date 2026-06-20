@@ -174,7 +174,7 @@ export default function CollectionPage() {
   const isEmptyCollection = !loading && total === 0 && !hasFilters
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -288,18 +288,18 @@ export default function CollectionPage() {
           <SearchBar value={search} onChange={setSearch} />
         </div>
         {ownedSets.length > 1 && (
-          <select value={setFilter} onChange={(e) => setSetFilter(e.target.value)} className="input w-48">
+          <select value={setFilter} onChange={(e) => setSetFilter(e.target.value)} className="input flex-1 min-w-[140px] sm:max-w-[12rem]">
             <option value="">All Sets</option>
             {ownedSets.map((s) => (
               <option key={s.code || s.name} value={s.name}>{s.name}</option>
             ))}
           </select>
         )}
-        <select value={rarity} onChange={(e) => setRarity(e.target.value)} className="input w-44">
+        <select value={rarity} onChange={(e) => setRarity(e.target.value)} className="input flex-1 min-w-[140px] sm:max-w-[11rem]">
           <option value="">All Rarities</option>
           {RARITIES.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
-        <select value={condition} onChange={(e) => setCondition(e.target.value)} className="input w-44">
+        <select value={condition} onChange={(e) => setCondition(e.target.value)} className="input flex-1 min-w-[140px] sm:max-w-[11rem]">
           <option value="">All Conditions</option>
           {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -310,7 +310,7 @@ export default function CollectionPage() {
             setSort(s)
             setOrder(o)
           }}
-          className="input w-44"
+          className="input flex-1 min-w-[140px] sm:max-w-[11rem]"
         >
           {SORTS.map(({ value, label }) => (
             <>

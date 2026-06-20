@@ -56,7 +56,7 @@ export default function StatsPage() {
     .map(([code, value]) => ({ name: `${LANG_FLAGS[code] || ''} ${code}`, value }))
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold">Collection Stats</h1>
 
       {/* Summary cards */}

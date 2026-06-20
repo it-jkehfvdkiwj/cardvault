@@ -115,7 +115,7 @@ export default function UploadPage() {
   const currentResult = currentResultIdx !== null ? results[currentResultIdx] : null
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Upload Cards</h1>
         <p className="text-gray-400 text-sm mt-1">Drag & drop card images or click to browse. Up to 50 at once.</p>
