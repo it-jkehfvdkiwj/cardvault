@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Environment & secrets
+.env
+*.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Uploads (user files, not tracked)
+backend/uploads/
+
+# Tesseract language data (large binary, install separately)
+backend/tessdata/*.traineddata
+
+# Frontend build output
+frontend/dist/
+frontend/node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log

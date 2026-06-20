@@ -1,0 +1,40 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - '8000:8000'
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+    environment:
+      - DATABASE_URL=sqlite:///./cardvault.db
+      - UPLOAD_DIR=uploads
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:80}
+      - POKEMON_TCG_API_KEY=${POKEMON_TCG_API_KEY:-}
+      # Auth / admin — SET A REAL JWT_SECRET IN PRODUCTION
+      - JWT_SECRET=${JWT_SECRET:-dev-insecure-secret-change-me-0123456789-abcdefghij}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      # Billing (optional Stripe)
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
+      - ALLOW_DEMO_BILLING=${ALLOW_DEMO_BILLING:-true}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - '80:80'
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  uploads_data:

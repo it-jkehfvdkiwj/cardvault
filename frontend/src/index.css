@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-pokemon-dark text-gray-100 min-h-screen;
+  }
+  ::-webkit-scrollbar {
+    @apply w-1.5;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-pokemon-card;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded-full;
+  }
+}
+
+@layer components {
+  .card-hover {
+    @apply transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-pokemon-yellow/10;
+  }
+  .btn-primary {
+    @apply bg-pokemon-red hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply bg-gray-700 hover:bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg transition-colors;
+  }
+  .btn-ghost {
+    @apply hover:bg-white/10 text-gray-300 hover:text-white px-4 py-2 rounded-lg transition-colors;
+  }
+  .input {
+    @apply bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-pokemon-yellow transition-colors w-full;
+  }
+  .panel {
+    @apply bg-pokemon-card rounded-xl border border-gray-800 p-4;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+}

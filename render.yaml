@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: cardvault
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:///./cardvault.db
+      - key: UPLOAD_DIR
+        value: uploads
+      - key: ALLOW_DEMO_BILLING
+        value: "true"
+      - key: ADMIN_EMAILS
+        value: quirin06@mail.de
