@@ -2,7 +2,7 @@ services:
   - type: web
     name: cardvault
     runtime: docker
-    dockerfilePath: ./Dockerfile.backend
+    dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
     envVars:
