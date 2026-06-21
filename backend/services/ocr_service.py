@@ -55,11 +55,21 @@ TESSDATA_DIR = os.getenv("TESSDATA_DIR", str(_DEFAULT_TESSDATA))
 NAME_LANGS = os.getenv("OCR_NAME_LANGS", "deu+eng")
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
-_NUM_RE = re.compile(r"\b(\d{1,4})\s*/\s*(\d{1,4})\b")
+# Collector numbers and set totals are 1–3 digits (1–999). We deliberately do NOT
+# anchor with \b: real cards print the regulation mark / year right next to the
+# "NNN/TTT", and OCR often merges them (e.g. "052/19707", "052/1972 2023"). A
+# \b-anchored, up-to-4-digit pattern rejected those outright — the #1 reason a
+# modern card with a perfectly readable number failed to identify. Capturing the
+# 1–3 digits immediately around the slash grabs the right value despite the noise;
+# _vote's range/ratio checks + multi-read voting reject the rare false positive.
+_NUM_RE = re.compile(r"(\d{1,3})\s*/\s*(\d{1,3})")
 _SET_NUM_RE = re.compile(
-    r"\b([A-Z][A-Z0-9]{1,5})\s*[\-\s]?\s*(\d{1,4})\s*/\s*(\d{1,4})\b", re.IGNORECASE
+    r"([A-Z][A-Z0-9]{1,5})\s*[\-\s]?\s*(\d{1,3})\s*/\s*(\d{1,3})", re.IGNORECASE
 )
-_SET_NUM_NOSLASH_RE = re.compile(r"\b([A-Z]{2,5})\s+(\d{1,4})\b", re.IGNORECASE)
+_SET_NUM_NOSLASH_RE = re.compile(r"\b([A-Z]{2,5})\s+(\d{1,3})\b", re.IGNORECASE)
+
+# Char whitelist for digit-focused collector-number reads.
+_NUM_WHITELIST = "0123456789/"
 
 
 # ── Tesseract helpers ─────────────────────────────────────────────────────────
@@ -164,20 +174,23 @@ def _cheap_bottom_texts(cv_img: np.ndarray) -> list[str]:
     strip = cv_img[int(h * 0.87):, :]
     if strip.size == 0:
         return []
-    gray, otsu = _prep(strip, target_w=1400)
+    gray, otsu = _prep(strip, target_w=1500)
 
     texts = [_ocr(otsu, lang="eng", psm=6)]
     _, n, t = _vote(texts)
     if n and t:
         return texts
 
+    # Digit-focused pass: whitelisting digits+slash reads "NNN/TTT" far more
+    # cleanly when letters/symbols (regulation mark, year) crowd the number.
+    texts.append(_ocr(otsu, lang="eng", psm=6, whitelist=_NUM_WHITELIST))
     texts.append(_ocr(otsu, lang="eng", psm=11))
     _, n, t = _vote(texts)
     if n and t:
         return texts
 
+    texts.append(_ocr(gray, lang="eng", psm=11, whitelist=_NUM_WHITELIST))
     texts.append(_ocr(gray, lang="eng", psm=6))
-    texts.append(_ocr(gray, lang="eng", psm=11))
     return texts
 
 
@@ -205,35 +218,42 @@ def extract_set_and_number(
 
 
 def _fanout_bottom_texts(cv_img: np.ndarray) -> list[str]:
-    """Expensive corner fan-out (psm 11 + 6 on both bottom corners). ~8 OCR
-    calls — only run when the cheap pass failed."""
+    """Expensive last-resort fan-out — only when the cheap pass found no number.
+
+    Runs at higher resolution than the cheap pass (small/blurry numbers need it)
+    over a taller strip and both corners, mixing general reads with digit-focused
+    (whitelisted) reads that pull "NNN/TTT" out of crowded print."""
     h, w = cv_img.shape[:2]
     texts: list[str] = []
     for region in (
-        cv_img[int(h * 0.87):, : int(w * 0.5)],   # bottom-left
-        cv_img[int(h * 0.87):, int(w * 0.5):],    # bottom-right
+        cv_img[int(h * 0.82):, : int(w * 0.55)],   # bottom-left (modern number)
+        cv_img[int(h * 0.82):, int(w * 0.45):],    # bottom-right (older layout)
+        cv_img[int(h * 0.82):, :],                  # full bottom (context)
     ):
         if region.size == 0:
             continue
-        g, o = _prep(region, target_w=1100)
+        g, o = _prep(region, target_w=1800)
         for im in (o, g):
-            for psm in (11, 6):
-                texts.append(_ocr(im, lang="eng", psm=psm))
+            texts.append(_ocr(im, lang="eng", psm=6, whitelist=_NUM_WHITELIST))
+            texts.append(_ocr(im, lang="eng", psm=11))
     return texts
 
 
 def _resolve_bottom(
     texts: list[str], cv_img: np.ndarray, do_fanout: bool = True,
 ) -> tuple[str | None, str | None, str | None]:
-    """Vote on the given OCR texts; optionally add the corner fan-out and revote."""
+    """Vote on the given OCR texts; optionally add the corner fan-out and revote.
+
+    A collector number alone is enough to identify the card downstream (via
+    number+total lookup), so we don't insist on also reading the flaky set code."""
     code, number, total = _vote(texts)
-    if code and number:
+    if number:
         return code, number, total
 
     if do_fanout:
         texts = texts + _fanout_bottom_texts(cv_img)
         code, number, total = _vote(texts)
-        if code and number:
+        if number:
             return code, number, total
 
     # Fallback: "CODE NNN" without slash, code validated.
