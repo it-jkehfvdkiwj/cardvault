@@ -81,6 +81,13 @@ def _cleanup_stale_temps() -> None:
             pass
 
 
+@app.on_event("shutdown")
+async def _close_http_client() -> None:
+    """Close the shared pooled HTTP client used for TCG/PokeAPI calls."""
+    from services import tcg_api_service
+    await tcg_api_service.aclose_client()
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "CardVault API"}

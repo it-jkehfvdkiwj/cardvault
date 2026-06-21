@@ -124,6 +124,8 @@ export const cardsApi = {
 
   tcgInfo: (id) => api.get(`/cards/${id}/tcg-info`),
   variants: (id) => api.get(`/cards/${id}/variants`),
+  // Lazy variant lookup for an unsaved scan candidate (by TCG card id).
+  scanVariants: (tcgId) => api.get('/cards/scan/variants', { params: { tcg_card_id: tcgId } }),
   setsOwned: () => api.get('/cards/sets-owned'),
   collectionIds: () => api.get('/cards/collection-ids'),
 }

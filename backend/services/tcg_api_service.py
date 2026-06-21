@@ -28,6 +28,31 @@ TCG_API_BASE = "https://api.pokemontcg.io/v2"
 CACHE_TTL_HOURS = 24
 PAGE_SIZE = 20
 
+# ── Shared HTTP client ────────────────────────────────────────────────────────
+# A single pooled AsyncClient keeps TCP+TLS connections alive across calls instead
+# of paying a fresh handshake per request. Identifying one card hits several
+# endpoints back-to-back, so connection reuse is the biggest single latency win.
+_CLIENT: httpx.AsyncClient | None = None
+
+
+def _client() -> httpx.AsyncClient:
+    global _CLIENT
+    if _CLIENT is None or _CLIENT.is_closed:
+        _CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(15.0, connect=5.0),
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+            headers={"User-Agent": "CardVault/1.0"},
+        )
+    return _CLIENT
+
+
+async def aclose_client() -> None:
+    """Close the shared client on app shutdown."""
+    global _CLIENT
+    if _CLIENT is not None and not _CLIENT.is_closed:
+        await _CLIENT.aclose()
+    _CLIENT = None
+
 # ── German Pokémon name → English name ───────────────────────────────────────
 # Used to translate OCR output from German cards before hitting the TCG API.
 GERMAN_TO_EN: dict[str, str] = {
@@ -243,19 +268,18 @@ async def search_cards(
     if cached is not None:
         return cached["items"], cached["has_more"]
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"{TCG_API_BASE}/cards",
-            headers=_get_headers(),
-            params={
-                "q": q,
-                "page": page,
-                "pageSize": PAGE_SIZE + 1,
-                "select": "id,name,set,rarity,types,hp,images,tcgplayer,cardmarket,nationalPokedexNumbers",
-            },
-        )
-        resp.raise_for_status()
-        raw = resp.json().get("data", [])
+    resp = await _client().get(
+        f"{TCG_API_BASE}/cards",
+        headers=_get_headers(),
+        params={
+            "q": q,
+            "page": page,
+            "pageSize": PAGE_SIZE + 1,
+            "select": "id,name,set,rarity,types,hp,images,tcgplayer,cardmarket,nationalPokedexNumbers",
+        },
+    )
+    resp.raise_for_status()
+    raw = resp.json().get("data", [])
 
     has_more = len(raw) > PAGE_SIZE
     data = raw[:PAGE_SIZE]
@@ -269,15 +293,14 @@ async def get_card_by_id(card_id: str, db: Session) -> dict | None:
     if cached:
         return cached
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"{TCG_API_BASE}/cards/{card_id}",
-            headers=_get_headers(),
-        )
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        data = resp.json().get("data", {})
+    resp = await _client().get(
+        f"{TCG_API_BASE}/cards/{card_id}",
+        headers=_get_headers(),
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    data = resp.json().get("data", {})
 
     _cache_set(db, cache_key, data)
     return data
@@ -313,18 +336,17 @@ async def get_national_dex_variants(
         return [c for c in cached if c.get("id") != primary_card_id][:limit]
 
     try:
-        async with httpx.AsyncClient(timeout=12) as client:
-            resp = await client.get(
-                f"{TCG_API_BASE}/cards",
-                headers=_get_headers(),
-                params={
-                    "q": f"nationalPokedexNumbers:{dex_num}",
-                    "pageSize": 100,
-                    "select": "id,name,set,rarity,images,nationalPokedexNumbers",
-                },
-            )
-            resp.raise_for_status()
-            raw = resp.json().get("data", [])
+        resp = await _client().get(
+            f"{TCG_API_BASE}/cards",
+            headers=_get_headers(),
+            params={
+                "q": f"nationalPokedexNumbers:{dex_num}",
+                "pageSize": 100,
+                "select": "id,name,set,rarity,images,nationalPokedexNumbers",
+            },
+        )
+        resp.raise_for_status()
+        raw = resp.json().get("data", [])
     except Exception:
         return []
 
@@ -378,10 +400,9 @@ async def get_localized_pokemon_name(
     names = _cache_get(db, cache_key)
     if names is None:
         try:
-            async with httpx.AsyncClient(timeout=12) as client:
-                resp = await client.get(f"{POKEAPI_BASE}/pokemon-species/{dex}")
-                resp.raise_for_status()
-                data = resp.json()
+            resp = await _client().get(f"{POKEAPI_BASE}/pokemon-species/{dex}")
+            resp.raise_for_status()
+            data = resp.json()
             names = {
                 n["language"]["name"]: n["name"]
                 for n in data.get("names", [])
@@ -447,19 +468,18 @@ async def find_by_number_total(
     cached = _cache_get(db, cache_key)
     if cached is None:
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    f"{TCG_API_BASE}/cards",
-                    headers=_get_headers(),
-                    params={
-                        "q": f"number:{number}",
-                        "pageSize": 250,
-                        "select": "id,name,set,rarity,types,hp,images,"
-                                  "tcgplayer,cardmarket,nationalPokedexNumbers",
-                    },
-                )
-                resp.raise_for_status()
-                raw = resp.json().get("data", [])
+            resp = await _client().get(
+                f"{TCG_API_BASE}/cards",
+                headers=_get_headers(),
+                params={
+                    "q": f"number:{number}",
+                    "pageSize": 250,
+                    "select": "id,name,set,rarity,types,hp,images,"
+                              "tcgplayer,cardmarket,nationalPokedexNumbers",
+                },
+            )
+            resp.raise_for_status()
+            raw = resp.json().get("data", [])
         except Exception:
             return []
 
@@ -493,14 +513,13 @@ async def list_sets(db: Session) -> list[dict]:
     if cached is not None:
         return cached
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.get(
-            f"{TCG_API_BASE}/sets",
-            headers=_get_headers(),
-            params={"pageSize": 250, "select": "id,name,series,releaseDate"},
-        )
-        resp.raise_for_status()
-        sets = resp.json().get("data", [])
+    resp = await _client().get(
+        f"{TCG_API_BASE}/sets",
+        headers=_get_headers(),
+        params={"pageSize": 250, "select": "id,name,series,releaseDate"},
+    )
+    resp.raise_for_status()
+    sets = resp.json().get("data", [])
 
     sets.sort(key=lambda s: s.get("releaseDate", ""), reverse=True)
     _cache_set(db, cache_key, sets)

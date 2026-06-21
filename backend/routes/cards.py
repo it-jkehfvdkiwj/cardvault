@@ -215,7 +215,11 @@ async def upload_cards(
         # (total-consistent match first) for the user to confirm.
         if not identified_early and card_num:
             try:
-                ocr_name_raw = ocr_service.extract_card_name(cv_img) or ""
+                # The collector number + printed total is a near-unique key, so on
+                # this fast path we skip the (multi-pass, bilingual) name OCR and
+                # only fall back to it when there's no total to disambiguate.
+                if not set_total:
+                    ocr_name_raw = ocr_service.extract_card_name(cv_img) or ""
                 num_matches = await tcg_api_service.find_by_number_total(
                     card_num, set_total, db, ocr_name_raw or None
                 )
@@ -239,10 +243,12 @@ async def upload_cards(
             identification_method = "set_number"
 
         # ── Step 1: perceptual hash match ─────────────────────────────────
-        phash = hash_service.compute_phash(cv_img)
+        # Pure identification fallback — skip the DCT entirely when the set number
+        # already gave a confident hit (it's otherwise computed and thrown away).
         hash_match, hamming = None, hash_service.MAX_BITS + 1
 
         if not identified_early:
+            phash = hash_service.compute_phash(cv_img)
             if phash:
                 hash_match, hamming = hash_service.find_best_match(phash, db)
 
@@ -276,23 +282,11 @@ async def upload_cards(
             except Exception:
                 pass
 
-        # ── Step 3: language variants for top candidate ───────────────────
-        language_variants: list[dict] = []
-        top_candidate = candidates[0] if candidates else None
-        if top_candidate and not top_candidate.get("id", "").startswith("cm-"):
-            try:
-                card_detail = await tcg_api_service.get_card_by_id(
-                    top_candidate["id"], db
-                )
-                if card_detail:
-                    dex_nums = card_detail.get("nationalPokedexNumbers") or []
-                    if dex_nums:
-                        language_variants = await tcg_api_service.get_national_dex_variants(
-                            top_candidate["id"], dex_nums, db
-                        )
-            except Exception:
-                pass
-
+        # ── Step 3: language variants ─────────────────────────────────────
+        # Deliberately NOT fetched here — it costs an extra (large) API round-trip
+        # on every scan for a panel that's collapsed by default. The frontend loads
+        # it lazily via GET /cards/scan/variants once the result is on screen, so
+        # the scan response stays fast.
         results.append({
             "filename": file.filename,
             "ocr_name": ocr_name_raw,           # raw OCR (shown in UI subtitle)
@@ -302,7 +296,7 @@ async def upload_cards(
             "thumbnail_url": thumbnail_url,
             "identification_method": identification_method,
             "candidates": candidates[:5],
-            "language_variants": language_variants,
+            "language_variants": [],   # loaded lazily; see /cards/scan/variants
         })
 
     return {"results": results}
@@ -357,6 +351,32 @@ async def manual_search(
         "has_more": tcg_has_more or cm_has_more,
         "cm_available": cardmarket_service.cm_available(),
     }
+
+
+# ── Lazy language variants for a scan candidate ───────────────────────────────
+
+@router.get("/scan/variants")
+async def get_scan_variants(
+    tcg_card_id: str = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(auth_service.get_current_user),
+):
+    """Other printings of the same Pokémon for a *scan* candidate (not yet saved).
+
+    Kept off the upload hot path so a scan returns fast; the ConfirmModal fetches
+    this in the background once the match is on screen.
+    """
+    if not tcg_card_id or tcg_card_id.startswith("cm-"):
+        return {"variants": []}
+    try:
+        data = await tcg_api_service.get_card_by_id(tcg_card_id, db)
+    except Exception:
+        return {"variants": []}
+    dex_nums = (data or {}).get("nationalPokedexNumbers") or []
+    if not dex_nums:
+        return {"variants": []}
+    variants = await tcg_api_service.get_national_dex_variants(tcg_card_id, dex_nums, db)
+    return {"variants": variants}
 
 
 # ── Confirm & save ────────────────────────────────────────────────────────────

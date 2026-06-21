@@ -85,16 +85,26 @@ def _ocr(crop: np.ndarray, *, lang: str, psm: int, whitelist: str | None = None)
         return ""
 
 
-def _prep(crop: np.ndarray, scale: int = 3) -> tuple[np.ndarray, np.ndarray]:
-    """Return (upscaled_gray, otsu_binary) for a crop. We deliberately avoid
-    heavy denoising before upscaling — it smears the tiny collector-number digits
-    and tanks accuracy. These two variants cover the vast majority of cards
-    (Otsu for clean text, plain gray for low-contrast / stylised fonts)."""
+def _prep(crop: np.ndarray, target_w: int = 1400) -> tuple[np.ndarray, np.ndarray]:
+    """Return (gray, otsu_binary) for a crop, resized to ~``target_w`` px wide.
+
+    We bound the working width instead of blindly multiplying resolution: a
+    high-res phone scan upscaled 3× produced a ~4600 px strip that cost ~3 s per
+    Tesseract call. Normalising to a fixed width keeps OCR fast and is plenty for
+    the small bottom text — while tiny webcam crops are still upscaled (capped at
+    3×) so low-res frames stay readable. We avoid heavy denoising, which smears the
+    tiny collector-number digits. Otsu handles clean text; plain gray covers
+    low-contrast / stylised fonts."""
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    gray = cv2.resize(
-        gray, (gray.shape[1] * scale, gray.shape[0] * scale),
-        interpolation=cv2.INTER_CUBIC,
-    )
+    h, w = gray.shape[:2]
+    if w:
+        scale = min(target_w / w, 3.0)
+        if abs(scale - 1.0) > 0.05:
+            interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+            gray = cv2.resize(
+                gray, (max(1, round(w * scale)), max(1, round(h * scale))),
+                interpolation=interp,
+            )
     _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return gray, otsu
 
@@ -142,14 +152,33 @@ def _vote(texts: list[str]) -> tuple[str | None, str | None, str | None]:
 
 
 def _cheap_bottom_texts(cv_img: np.ndarray) -> list[str]:
-    """Two cheap OCR reads of the full bottom strip (psm 11). Catches the
-    majority of cards in ~1 s."""
+    """Cheap OCR of the full bottom strip, escalating only as needed.
+
+    The collector number + printed total ("052/197") is the reliable, easy-to-read
+    signal (the 3-letter set code often mis-reads). A single Otsu + psm 6 pass
+    reads it on the vast majority of modern cards, so we try that first and return
+    immediately once we have both number and total — most cards cost ONE Tesseract
+    call. Only when that's inconclusive do we add psm 11 and the grayscale variant
+    (for low-contrast / stylised fonts)."""
     h = cv_img.shape[0]
     strip = cv_img[int(h * 0.87):, :]
     if strip.size == 0:
         return []
-    gray, otsu = _prep(strip, scale=3)
-    return [_ocr(gray, lang="eng", psm=11), _ocr(otsu, lang="eng", psm=11)]
+    gray, otsu = _prep(strip, target_w=1400)
+
+    texts = [_ocr(otsu, lang="eng", psm=6)]
+    _, n, t = _vote(texts)
+    if n and t:
+        return texts
+
+    texts.append(_ocr(otsu, lang="eng", psm=11))
+    _, n, t = _vote(texts)
+    if n and t:
+        return texts
+
+    texts.append(_ocr(gray, lang="eng", psm=6))
+    texts.append(_ocr(gray, lang="eng", psm=11))
+    return texts
 
 
 def _cheap_bottom(cv_img: np.ndarray) -> tuple[str | None, str | None, str | None]:
@@ -186,7 +215,7 @@ def _fanout_bottom_texts(cv_img: np.ndarray) -> list[str]:
     ):
         if region.size == 0:
             continue
-        g, o = _prep(region, scale=4)
+        g, o = _prep(region, target_w=1100)
         for im in (o, g):
             for psm in (11, 6):
                 texts.append(_ocr(im, lang="eng", psm=psm))
@@ -236,23 +265,23 @@ def read_card_bottom(
 
     flipped = cv2.rotate(cv_img, cv2.ROTATE_180)
 
-    # 1) Cheap probe of both orientations (≈4 OCR calls). Catches most cards.
+    # 1) Cheap probe — often a single OCR call. A readable collector number is
+    #    enough: the card is identified downstream via number(+total). We no longer
+    #    require the set code here — it mis-reads often, and requiring it used to
+    #    force the expensive corner fan-out on nearly every card (~20 s).
     up_texts = list(_cheap_bottom_texts(cv_img))
     c, n, t = _vote(up_texts)
-    if c and n:
+    if n:
         return c, n, t, cv_img
 
+    # 2) No number upright → the auto-crop may have left the card upside-down.
+    #    Probe the flipped orientation cheaply.
     fl_texts = list(_cheap_bottom_texts(flipped))
     c2, n2, t2 = _vote(fl_texts)
-    if c2 and n2:
+    if n2:
         return c2, n2, t2, flipped
 
-    # 2) Cheap pass failed both ways → run the expensive fan-out ONCE on the
-    #    orientation that at least yielded a collector number (else original).
-    if n2 and not n:
-        c2, n2, t2 = _resolve_bottom(fl_texts, flipped)
-        return c2, n2, t2, flipped
-
+    # 3) Neither orientation yielded a number → expensive corner fan-out ONCE.
     c, n, t = _resolve_bottom(up_texts, cv_img)
     return c, n, t, cv_img
 
@@ -321,7 +350,7 @@ def extract_card_name(cv_img: np.ndarray) -> str:
 
     known = _known_names()
     candidates: list[str] = []
-    gray, otsu = _prep(region, scale=3)
+    gray, otsu = _prep(region, target_w=1200)
     for im in (otsu, gray):
         for psm in (7, 11):
             name = _clean_name(_ocr(im, lang=NAME_LANGS, psm=psm))

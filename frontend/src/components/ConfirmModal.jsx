@@ -277,8 +277,22 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
   const setsLoadedRef = useRef(false)
 
   const candidates = result?.candidates || []
-  const languageVariants = result?.language_variants || []
   const active = selected ?? candidates[0] ?? searchResults[0] ?? null
+
+  // Language variants are fetched lazily (kept off the scan hot path so the scan
+  // returns fast); they fill the collapsed "Other language versions" panel a
+  // moment after the match is on screen.
+  const [languageVariants, setLanguageVariants] = useState(result?.language_variants || [])
+  useEffect(() => {
+    if (languageVariants.length) return
+    const id = candidates[0]?.id
+    if (!id || String(id).startsWith('cm-')) return
+    let cancelled = false
+    cardsApi.scanVariants(id)
+      .then(({ data }) => { if (!cancelled) setLanguageVariants(data.variants || []) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Localized name of the active card for the chosen card language (the TCG API
   // is English-only, so e.g. "Arboliva" → "Olithena" for a German card).
