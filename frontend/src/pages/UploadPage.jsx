@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
-import { Upload, Image as ImageIcon, Loader, CheckCircle, AlertCircle, Camera } from 'lucide-react'
-import { cardsApi } from '../api/client'
+import { Upload, Image as ImageIcon, Loader, CheckCircle, AlertCircle, Camera, Layers } from 'lucide-react'
+import { cardsApi, saleApi } from '../api/client'
 import ConfirmModal from '../components/ConfirmModal'
 import CameraCapture from '../components/CameraCapture'
 
@@ -18,6 +18,13 @@ export default function UploadPage() {
   const [showCamera, setShowCamera] = useState(false)
   const [ownedMap, setOwnedMap] = useState({})
   const [skipped, setSkipped] = useState(0)
+  const [pairMode, setPairMode] = useState(false)   // "2er-Pack": front + back per card
+
+  useEffect(() => {
+    saleApi.getSettings()
+      .then(({ data }) => setPairMode((data.photos_per_card || 1) >= 2))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     cardsApi.collectionIds()
@@ -55,6 +62,12 @@ export default function UploadPage() {
     maxFiles: 50,
   })
 
+  async function togglePairMode() {
+    const next = !pairMode
+    setPairMode(next)
+    try { await saleApi.updateSettings(next ? 2 : 1) } catch {}
+  }
+
   async function handleUpload() {
     if (!files.length) return
     setUploading(true)
@@ -70,7 +83,7 @@ export default function UploadPage() {
     try {
       const { data } = await cardsApi.upload(fd, (ev) => {
         if (ev.total) setProgress(Math.round((ev.loaded / ev.total) * 100))
-      })
+      }, pairMode)
       setResults(data.results)
       setCurrentResultIdx(0)
     } catch (err) {
@@ -120,6 +133,29 @@ export default function UploadPage() {
         <h1 className="text-2xl font-bold">Upload Cards</h1>
         <p className="text-gray-400 text-sm mt-1">Drag & drop card images or click to browse. Up to 50 at once.</p>
       </div>
+
+      {/* 2er-Pack (front + back) toggle */}
+      <button
+        onClick={togglePairMode}
+        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm border transition-colors ${
+          pairMode
+            ? 'bg-pokemon-yellow/10 border-pokemon-yellow/40 text-pokemon-yellow'
+            : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+        }`}
+      >
+        <Layers className="w-4 h-4 shrink-0" />
+        <span className="text-left flex-1">
+          2er-Pack {pairMode ? 'an' : 'aus'}
+          <span className="block text-xs text-gray-500 font-normal">
+            {pairMode
+              ? 'Pro Karte: erst Vorderseite, dann Rückseite (in dieser Reihenfolge).'
+              : 'Nur Vorderseite pro Karte.'}
+          </span>
+        </span>
+        <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${pairMode ? 'bg-pokemon-yellow text-black' : 'bg-gray-700 text-gray-300'}`}>
+          {pairMode ? '2 Fotos' : '1 Foto'}
+        </span>
+      </button>
 
       {/* Dropzone */}
       <div
@@ -233,6 +269,7 @@ export default function UploadPage() {
       {/* Camera modal */}
       {showCamera && (
         <CameraCapture
+          pairMode={pairMode}
           onCapture={handleCameraCapture}
           onClose={() => setShowCamera(false)}
         />

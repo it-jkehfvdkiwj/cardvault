@@ -143,6 +143,7 @@ def get_collection_ids(
 async def upload_cards(
     files: list[UploadFile] = File(...),
     set_code: Optional[str] = Form(None),
+    pairs: bool = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(auth_service.get_current_user),
 ):
@@ -150,7 +151,22 @@ async def upload_cards(
         raise HTTPException(status_code=400, detail="Maximum 50 files per upload")
 
     results = []
-    for file in files:
+    for idx, file in enumerate(files):
+        # "2er-Pack" mode: files arrive as [front, back, front, back, …]. Even
+        # indexes are fronts (identified below); odd indexes are backs — we just
+        # crop+store them and attach the path to the preceding front's result so
+        # confirm() can keep it as the card's back photo.
+        if pairs and idx % 2 == 1:
+            try:
+                pil_b, _ = image_service.preprocess_card_image(await file.read())
+                bname = f"tmp_{uuid.uuid4().hex}.jpg"
+                bpath = image_service.save_image(pil_b, bname)
+                if results:
+                    results[-1]["back_local_path"] = bpath
+            except Exception:
+                pass
+            continue
+
         # Accept by MIME type OR by image file extension — browsers often send
         # an empty/odd content-type for .heic (iPhone) photos.
         fname = (file.filename or "").lower()

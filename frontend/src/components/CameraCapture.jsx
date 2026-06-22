@@ -12,7 +12,7 @@ import { X, Camera, SwitchCamera, Check, Trash2, Loader } from 'lucide-react'
  * Captured frames are returned as JPEG File objects via onCapture, so they flow
  * through the exact same upload/identify pipeline as drag-and-dropped images.
  */
-export default function CameraCapture({ onCapture, onClose }) {
+export default function CameraCapture({ onCapture, onClose, pairMode = false }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
@@ -195,6 +195,13 @@ export default function CameraCapture({ onCapture, onClose }) {
                 )}
               </div>
 
+              {pairMode && (
+                <div className="text-center">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-pokemon-yellow/15 text-pokemon-yellow border border-pokemon-yellow/30">
+                    2er-Pack · Nächste Aufnahme: {shots.length % 2 === 0 ? '🃏 Vorderseite' : '🔄 Rückseite'}
+                  </span>
+                </div>
+              )}
               <p className="text-xs text-gray-400 text-center">
                 Karte gerade und formatfüllend in den gelben Rahmen halten. Gute Beleuchtung,
                 keine Spiegelungen — am wichtigsten ist die Set-Nummer unten (z. B. 018/091).
@@ -206,6 +213,11 @@ export default function CameraCapture({ onCapture, onClose }) {
                   {shots.map((s, i) => (
                     <div key={i} className="relative group">
                       <img src={s.url} alt={`Aufnahme ${i + 1}`} className="w-16 h-24 object-cover rounded-lg border border-gray-700" />
+                      {pairMode && (
+                        <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-center text-gray-200 rounded-b-lg py-0.5">
+                          {i % 2 === 0 ? 'Vorder' : 'Rück'}
+                        </span>
+                      )}
                       <button
                         onClick={() => removeShot(i)}
                         className="absolute -top-1.5 -right-1.5 bg-pokemon-red text-white rounded-full p-0.5 opacity-90 hover:opacity-100"

@@ -72,9 +72,10 @@ export const adminApi = {
 }
 
 export const cardsApi = {
-  upload: (formData, onProgress) =>
+  upload: (formData, onProgress, pairs = false) =>
     api.post('/cards/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      params: pairs ? { pairs: true } : {},
       onUploadProgress: onProgress,
       // OCR runs server-side per card and can take a few seconds each; allow
       // generous time for multi-card batches so we don't abort with "Upload failed".
