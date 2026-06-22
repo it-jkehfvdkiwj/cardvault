@@ -41,6 +41,42 @@ app.include_router(ebay.router)
 app.include_router(public.router)
 
 
+@app.get("/api/health/tcg")
+async def health_tcg():
+    """Live reachability check for the Pokémon TCG API from THIS server.
+
+    Card identification depends entirely on api.pokemontcg.io, so when every scan
+    returns 'no match' this tells us whether the API is reachable/slow from the
+    deploy (vs an OCR problem). Open it in the browser on the deployed URL.
+    """
+    import time
+    from services import tcg_api_service
+
+    out = {
+        "has_api_key": bool(os.getenv("POKEMON_TCG_API_KEY", "")),
+        "base": tcg_api_service.TCG_API_BASE,
+    }
+    t0 = time.perf_counter()
+    try:
+        resp = await tcg_api_service._client().get(
+            f"{tcg_api_service.TCG_API_BASE}/cards",
+            headers=tcg_api_service._get_headers(),
+            params={"q": "number:52", "pageSize": 1, "select": "id,name,set"},
+        )
+        out["latency_ms"] = round((time.perf_counter() - t0) * 1000)
+        out["status_code"] = resp.status_code
+        out["ok"] = resp.status_code == 200
+        try:
+            out["sample_results"] = len(resp.json().get("data", []))
+        except Exception:
+            out["sample_results"] = None
+    except Exception as exc:
+        out["ok"] = False
+        out["error"] = type(exc).__name__
+        out["latency_ms"] = round((time.perf_counter() - t0) * 1000)
+    return out
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     response = await call_next(request)
