@@ -55,6 +55,32 @@ Damit „Passwort vergessen"-Mails real verschickt werden, SMTP-Daten setzen:
 `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`.
 Ohne SMTP wird der Reset-Link nur in die Server-Konsole geschrieben (nur Dev).
 
+## 5b. Verkaufs-Fotos dauerhaft speichern (Cloudflare R2)
+
+Ohne Objektspeicher liegen die eigenen Karten-Fotos auf dem (bei Render-Free
+flüchtigen) Container-Dateisystem. Für dauerhafte Fotos **Cloudflare R2** (10 GB
+gratis, keine Egress-Gebühren) einrichten:
+
+1. Cloudflare-Konto → **R2** → **Create bucket** (z. B. `cardvault-photos`).
+2. Bucket → **Settings → Public access** → **R2.dev subdomain** aktivieren
+   (oder eine Custom Domain verbinden). Du erhältst eine öffentliche Basis-URL
+   wie `https://pub-xxxxxxxx.r2.dev` — das ist `R2_PUBLIC_URL`.
+3. R2 → **Manage R2 API Tokens** → **Create API token** (Berechtigung
+   *Object Read & Write* für den Bucket). Notiere **Access Key ID** + **Secret**.
+   Die **Account ID** steht in der R2-Übersicht.
+4. Im Render-Web-Service diese Env-Variablen setzen:
+
+| Variable | Wert |
+|---|---|
+| `R2_ACCOUNT_ID` | deine Cloudflare Account ID |
+| `R2_ACCESS_KEY_ID` | Access Key ID des API-Tokens |
+| `R2_SECRET_ACCESS_KEY` | Secret des API-Tokens |
+| `R2_BUCKET` | Bucket-Name (z. B. `cardvault-photos`) |
+| `R2_PUBLIC_URL` | öffentliche Basis-URL (z. B. `https://pub-xxxx.r2.dev`) |
+
+Sind alle fünf gesetzt, lädt die App Fotos automatisch nach R2 (sonst lokal).
+Status sichtbar unter **Konto → Verkaufs-Fotos** („☁️ Dauerhafter Speicher aktiv").
+
 ## 6. Rechtstexte
 
 Vor dem Launch in `frontend/src/pages/LegalPages.jsx` **Impressum, Datenschutz

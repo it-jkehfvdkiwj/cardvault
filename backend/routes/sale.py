@@ -27,7 +27,11 @@ class SaleSettings(BaseModel):
 
 @router.get("/settings")
 def get_settings(user: User = Depends(auth_service.get_current_user)):
-    return {"photos_per_card": user.sale_photos_per_card or 1}
+    return {
+        "photos_per_card": user.sale_photos_per_card or 1,
+        # True = photos go to durable Cloudflare R2 (survive redeploys).
+        "durable_storage": sale_photo_service.r2_enabled(),
+    }
 
 
 @router.put("/settings")

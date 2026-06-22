@@ -212,6 +212,7 @@ export default function AccountPage() {
 
 function SalePhotoSettings() {
   const [perCard, setPerCard] = useState(1)
+  const [durable, setDurable] = useState(false)
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -219,7 +220,10 @@ function SalePhotoSettings() {
 
   useEffect(() => {
     Promise.all([
-      saleApi.getSettings().then(({ data }) => setPerCard(data.photos_per_card || 1)).catch(() => {}),
+      saleApi.getSettings().then(({ data }) => {
+        setPerCard(data.photos_per_card || 1)
+        setDurable(!!data.durable_storage)
+      }).catch(() => {}),
       saleApi.listTemplates().then(({ data }) => setTemplates(data.templates || [])).catch(() => {}),
     ]).finally(() => setLoading(false))
   }, [])
@@ -258,9 +262,23 @@ function SalePhotoSettings() {
   return (
     <div className="panel space-y-4">
       <div>
-        <h2 className="font-semibold flex items-center gap-2">
-          <ShoppingBag className="w-4 h-4" /> Verkaufs-Fotos (eBay)
-        </h2>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h2 className="font-semibold flex items-center gap-2">
+            <ShoppingBag className="w-4 h-4" /> Verkaufs-Fotos (eBay)
+          </h2>
+          <span
+            className={`text-[10px] px-2 py-0.5 rounded-full border ${
+              durable
+                ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50'
+                : 'bg-amber-900/30 text-amber-400 border-amber-700/40'
+            }`}
+            title={durable
+              ? 'Fotos liegen dauerhaft in Cloudflare R2.'
+              : 'Fotos liegen auf flüchtigem Speicher (nach Redeploy weg). R2 in den Render-Env-Variablen aktivieren.'}
+          >
+            {durable ? '☁️ Dauerhafter Speicher aktiv' : '⚠️ Speicher flüchtig'}
+          </span>
+        </div>
         <p className="text-sm text-gray-400 mt-1">
           Deine eigenen Fotos statt des Katalogbilds. Das Scan-Foto wird automatisch
           die Vorderseite; eBay übernimmt die Bilder beim CSV-Upload.
