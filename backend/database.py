@@ -43,16 +43,37 @@ def run_migrations() -> None:
     we add the new ``user_id`` columns by hand if they're missing. Existing rows
     keep user_id = NULL (orphaned / hidden), matching the 'start fresh' choice.
 
-    The DDL below (DATETIME, BOOLEAN DEFAULT 0) is SQLite-specific. On Postgres a
-    fresh database already has every column via create_all(), so we skip this.
+    The legacy DDL further down (DATETIME, BOOLEAN DEFAULT 0) is SQLite-specific;
+    on Postgres a fresh DB already has those via create_all(), so we skip it. The
+    *portable* additions block below uses ANSI DDL and runs on both backends, so
+    columns added to existing tables after launch (e.g. the sale-photo columns)
+    show up on the live Postgres too.
     """
-    if not IS_SQLITE:
-        return
-
     from sqlalchemy import inspect, text
 
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
+
+    def _existing_cols(table: str) -> set[str]:
+        return {c["name"] for c in inspector.get_columns(table)}
+
+    # ── Portable additive columns (SQLite + Postgres) ─────────────────────────
+    portable = {
+        "cards": [("photo_front", "VARCHAR"), ("photo_back", "VARCHAR")],
+        "users": [("sale_photos_per_card", "INTEGER DEFAULT 1")],
+    }
+    with engine.begin() as conn:
+        for table, columns in portable.items():
+            if table not in existing_tables:
+                continue
+            cols = _existing_cols(table)
+            for col, ddl in columns:
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+
+    # ── Legacy SQLite-only migrations (pre-launch local DBs) ───────────────────
+    if not IS_SQLITE:
+        return
 
     # Columns to add if missing: {table: [(column, "SQL type [default]"), ...]}
     additions = {

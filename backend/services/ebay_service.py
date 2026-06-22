@@ -27,7 +27,8 @@ from html import escape
 
 from sqlalchemy.orm import Session
 
-from models import Card
+from models import Card, SaleTemplatePhoto
+from services import sale_photo_service
 
 # ── Marketplace presets ───────────────────────────────────────────────────────
 # (SiteID, Country, Currency) tuples keyed by a short site code.
@@ -101,6 +102,41 @@ def compute_price(card: Card, opts: dict) -> float:
             candidate += 1
         price = candidate
     return round(price, 2)
+
+
+# ── Photos ─────────────────────────────────────────────────────────────────────
+
+def collect_photo_urls(card: Card, templates: list[SaleTemplatePhoto]) -> list[str]:
+    """Ordered list of public image URLs for a card's listing.
+
+    Order: the seller's own front + back photos, then each fixed template photo
+    inserted at its configured position. Falls back to the stock TCG image when
+    the card has no own photo (so a listing always has at least one picture).
+    """
+    urls: list[str] = []
+    front = sale_photo_service.public_url(card.photo_front)
+    back = sale_photo_service.public_url(card.photo_back)
+    if front:
+        urls.append(front)
+    if back:
+        urls.append(back)
+
+    for tpl in sorted(templates, key=lambda t: (t.position or 99, t.id)):
+        u = sale_photo_service.public_url(tpl.path)
+        if not u:
+            continue
+        idx = max(0, min((tpl.position or len(urls) + 1) - 1, len(urls)))
+        urls.insert(idx, u)
+
+    if not urls and card.image_url:
+        urls.append(card.image_url)
+    # eBay allows up to 24 PicURLs; absolute http(s) URLs only.
+    return [u for u in urls[:24] if u and u.startswith("http")]
+
+
+def _pic_url_field(card: Card, templates: list[SaleTemplatePhoto]) -> str:
+    """eBay File Exchange PicURL value: image URLs separated by '|'."""
+    return "|".join(collect_photo_urls(card, templates))
 
 
 # ── Title / description ────────────────────────────────────────────────────────
@@ -195,7 +231,11 @@ def build_listing_csv(
         q = q.filter(Card.for_trade.is_(True))
     cards = q.order_by(Card.set_name, Card.name).all()
 
-    site_label = SITES.get(opts["site"], SITES["DE"])[0]
+    templates = (
+        db.query(SaleTemplatePhoto)
+        .filter(SaleTemplatePhoto.user_id == user_id)
+        .all()
+    )
 
     out = io.StringIO()
     writer = csv.writer(out)
@@ -233,7 +273,7 @@ def build_listing_csv(
             grade,
             "Pokémon",
             lang,
-            c.image_url or "",
+            _pic_url_field(c, templates),
             c.quantity or 1,
             opts["listing_format"],
             f"{price:.2f}",
@@ -267,17 +307,27 @@ def preview_listings(
         q = q.filter(Card.for_trade.is_(True))
     cards = q.order_by(Card.set_name, Card.name).all()
 
-    return [
-        {
+    templates = (
+        db.query(SaleTemplatePhoto)
+        .filter(SaleTemplatePhoto.user_id == user_id)
+        .all()
+    )
+
+    out = []
+    for c in cards:
+        photos = collect_photo_urls(c, templates)
+        own = sum(1 for p in (c.photo_front, c.photo_back) if p)
+        out.append({
             "id": c.id,
             "title": build_title(c),
             "price": compute_price(c, opts),
             "currency": SITES.get(opts["site"], SITES["DE"])[2],
             "quantity": c.quantity or 1,
-            "image_url": c.image_url,
+            "image_url": photos[0] if photos else c.image_url,
+            "n_photos": len(photos),
+            "n_own_photos": own,
             "has_price_data": bool(
                 c.price_trend_eur or c.market_price_eur or c.market_price_usd
             ),
-        }
-        for c in cards
-    ]
+        })
+    return out

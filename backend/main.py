@@ -11,7 +11,8 @@ load_dotenv()
 
 from database import Base, engine, run_migrations
 from routes import (
-    account, admin, auth, billing, cards, ebay, prices, public, stats, wantlist,
+    account, admin, auth, billing, cards, ebay, prices, public, sale, stats,
+    wantlist,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -39,6 +40,7 @@ app.include_router(wantlist.router)
 app.include_router(stats.router)
 app.include_router(ebay.router)
 app.include_router(public.router)
+app.include_router(sale.router)
 
 
 @app.get("/api/health/tcg")

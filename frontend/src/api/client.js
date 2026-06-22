@@ -124,6 +124,17 @@ export const cardsApi = {
 
   tcgInfo: (id) => api.get(`/cards/${id}/tcg-info`),
   variants: (id) => api.get(`/cards/${id}/variants`),
+
+  // Seller's own card photos (front / back) for eBay listings.
+  uploadPhoto: (id, slot, file) => {
+    const fd = new FormData()
+    fd.append('slot', slot)
+    fd.append('file', file)
+    return api.post(`/cards/${id}/photo`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  deletePhoto: (id, slot) => api.delete(`/cards/${id}/photo/${slot}`),
   // Lazy variant lookup for an unsaved scan candidate (by TCG card id).
   scanVariants: (tcgId) => api.get('/cards/scan/variants', { params: { tcg_card_id: tcgId } }),
   setsOwned: () => api.get('/cards/sets-owned'),
@@ -145,6 +156,30 @@ export const wantlistApi = {
 
 export const statsApi = {
   get: () => api.get('/stats'),
+}
+
+// Selling: per-user settings + reusable template photos for eBay listings.
+export const saleApi = {
+  getSettings: () => api.get('/sale/settings'),
+  updateSettings: (photosPerCard) =>
+    api.put('/sale/settings', { photos_per_card: photosPerCard }),
+  listTemplates: () => api.get('/sale/templates'),
+  addTemplate: (file, { label, position } = {}) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (label != null) fd.append('label', label)
+    if (position != null) fd.append('position', position)
+    return api.post('/sale/templates', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  updateTemplate: (id, { label, position } = {}) => {
+    const fd = new FormData()
+    if (label != null) fd.append('label', label)
+    if (position != null) fd.append('position', position)
+    return api.put(`/sale/templates/${id}`, fd)
+  },
+  deleteTemplate: (id) => api.delete(`/sale/templates/${id}`),
 }
 
 export const ebayApi = {

@@ -18,6 +18,7 @@ from services import (
     image_service,
     ocr_service,
     plan_service,
+    sale_photo_service,
     set_code_map,
     tcg_api_service,
 )
@@ -69,6 +70,9 @@ class CardConfirm(BaseModel):
     language: str = "EN"
     # CM fields optionally sent from the frontend when user picks a CM result
     cm_product_id: Optional[int] = None
+    # Scan photos kept as the card's own front/back pictures for the eBay listing.
+    scan_front_path: Optional[str] = None
+    scan_back_path: Optional[str] = None
 
 
 class CardUpdate(BaseModel):
@@ -474,6 +478,9 @@ async def confirm_card(
         price_low_eur=cm_prices.get("low_eur") or price_data.get("low_eur"),
         price_trend_eur=cm_prices.get("trend_eur") or price_data.get("trend_eur"),
         price_updated_at=datetime.utcnow() if (price_data or cm_prices) else None,
+        # Keep the seller's own scan photo(s) for the eBay listing.
+        photo_front=sale_photo_service.adopt_scan_image(payload.scan_front_path),
+        photo_back=sale_photo_service.adopt_scan_image(payload.scan_back_path),
     )
     db.add(card)
     db.commit()
@@ -778,6 +785,54 @@ def delete_card(
     return {"ok": True}
 
 
+# ── Sale photos (seller's own front / back pictures) ──────────────────────────
+
+@router.post("/{card_id}/photo")
+async def upload_card_photo(
+    card_id: int,
+    slot: str = Form(...),                # "front" | "back"
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(auth_service.get_current_user),
+):
+    if slot not in ("front", "back"):
+        raise HTTPException(status_code=400, detail="slot must be 'front' or 'back'")
+    card = _get_owned_card(card_id, user, db)
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    rel = sale_photo_service.save_bytes(data, file.filename)
+    old = card.photo_front if slot == "front" else card.photo_back
+    if slot == "front":
+        card.photo_front = rel
+    else:
+        card.photo_back = rel
+    db.commit()
+    db.refresh(card)
+    sale_photo_service.delete(old)   # free the replaced file
+    return _card_dict(card)
+
+
+@router.delete("/{card_id}/photo/{slot}")
+def delete_card_photo(
+    card_id: int,
+    slot: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(auth_service.get_current_user),
+):
+    if slot not in ("front", "back"):
+        raise HTTPException(status_code=400, detail="slot must be 'front' or 'back'")
+    card = _get_owned_card(card_id, user, db)
+    old = card.photo_front if slot == "front" else card.photo_back
+    if slot == "front":
+        card.photo_front = None
+    else:
+        card.photo_back = None
+    db.commit()
+    sale_photo_service.delete(old)
+    return _card_dict(card)
+
+
 # ── Serialiser ────────────────────────────────────────────────────────────────
 
 def _card_dict(c: Card) -> dict:
@@ -792,6 +847,11 @@ def _card_dict(c: Card) -> dict:
         "hp": c.hp,
         "image_url": c.image_url,
         "local_image_path": c.local_image_path,
+        # Seller's own photos (relative paths + public URLs) for the listing.
+        "photo_front": c.photo_front,
+        "photo_back": c.photo_back,
+        "photo_front_url": sale_photo_service.public_url(c.photo_front),
+        "photo_back_url": sale_photo_service.public_url(c.photo_back),
         "condition": c.condition,
         "quantity": c.quantity,
         "notes": c.notes,

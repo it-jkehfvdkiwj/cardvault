@@ -379,6 +379,8 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
       for_trade: false,
       language: cardLanguage,
       cm_product_id: active.cm_id || null,
+      // Keep the scan photo as the card's own front picture for eBay listings.
+      scan_front_path: result?.local_image_path || null,
     })
   }, [active, localizedName, condition, quantity, isFoil, cardLanguage, onConfirm])
 

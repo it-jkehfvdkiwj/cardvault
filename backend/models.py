@@ -30,6 +30,10 @@ class User(Base):
     is_public = Column(Boolean, default=False, nullable=False)
     public_slug = Column(String, unique=True, index=True)
 
+    # eBay selling: how many photos per card the seller takes (1 = front only,
+    # 2 = front + back / "2er-Pack" capture mode).
+    sale_photos_per_card = Column(Integer, default=1, nullable=False)
+
 
 class Card(Base):
     __tablename__ = "cards"
@@ -46,6 +50,10 @@ class Card(Base):
     hp = Column(String)
     image_url = Column(String)
     local_image_path = Column(String)
+    # Seller's own photos of THIS physical card (relative filenames under the
+    # sale-photos dir), used in the eBay listing instead of the stock image.
+    photo_front = Column(String)
+    photo_back = Column(String)
     condition = Column(String, default="Near Mint")
     quantity = Column(Integer, default=1)
     notes = Column(Text)
@@ -89,6 +97,19 @@ class ApiCache(Base):
     cache_key = Column(String, unique=True, index=True)
     response_json = Column(Text)
     cached_at = Column(DateTime, server_default=func.now())
+
+
+class SaleTemplatePhoto(Base):
+    """A seller's reusable fixed photo (e.g. shipping info, condition guide, logo)
+    that is inserted into every eBay listing at a chosen position."""
+    __tablename__ = "sale_template_photos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    path = Column(String, nullable=False)        # filename under the sale-photos dir
+    label = Column(String)                        # optional caption ("Versandinfo")
+    position = Column(Integer, default=99)        # insertion slot in the photo order
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class CardHashIndex(Base):
