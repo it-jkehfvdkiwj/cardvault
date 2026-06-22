@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   ArrowLeft, RefreshCw, Trash2, Sparkles, ArrowLeftRight,
   Save, ExternalLink, Euro, DollarSign, ShoppingBag, Zap, Star,
+  ImagePlus, Loader,
 } from 'lucide-react'
 import { cardsApi, pricesApi, wantlistApi } from '../api/client'
 import RarityBadge from '../components/RarityBadge'
@@ -184,6 +185,82 @@ function OtherPrintingsSection({ cardId }) {
   )
 }
 
+function SalePhotos({ card, onChange }) {
+  const [busy, setBusy] = useState(null)   // 'front' | 'back' while uploading
+  const frontRef = useRef(null)
+  const backRef = useRef(null)
+
+  async function upload(slot, file) {
+    if (!file) return
+    setBusy(slot)
+    try {
+      const { data } = await cardsApi.uploadPhoto(card.id, slot, file)
+      onChange(data)
+      toast.success(slot === 'front' ? 'Vorderseite gespeichert' : 'Rückseite gespeichert')
+    } catch { toast.error('Upload fehlgeschlagen') }
+    setBusy(null)
+  }
+
+  async function remove(slot) {
+    try {
+      const { data } = await cardsApi.deletePhoto(card.id, slot)
+      onChange(data)
+    } catch { toast.error('Konnte Foto nicht löschen') }
+  }
+
+  const slots = [
+    { key: 'front', label: 'Vorderseite', url: card.photo_front_url, ref: frontRef },
+    { key: 'back', label: 'Rückseite', url: card.photo_back_url, ref: backRef },
+  ]
+
+  return (
+    <div className="panel space-y-2">
+      <h2 className="font-semibold text-xs text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+        <ShoppingBag className="w-3.5 h-3.5" /> Verkaufs-Fotos
+      </h2>
+      <div className="grid grid-cols-2 gap-2">
+        {slots.map((s) => (
+          <div key={s.key} className="space-y-1">
+            <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden bg-gray-900 border border-gray-800 relative group">
+              {s.url ? (
+                <img src={s.url} alt={s.label} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-700 text-[11px] gap-1">
+                  <ImagePlus className="w-5 h-5" /> kein Foto
+                </div>
+              )}
+              {s.url && (
+                <button
+                  onClick={() => remove(s.key)}
+                  className="absolute top-1 right-1 bg-black/70 rounded p-1 text-gray-300 hover:text-pokemon-red opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Entfernen"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => s.ref.current?.click()}
+              disabled={busy === s.key}
+              className="btn-secondary w-full text-xs py-1 flex items-center justify-center gap-1"
+            >
+              {busy === s.key ? <Loader className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
+              {s.url ? 'Ändern' : s.label}
+            </button>
+            <input
+              ref={s.ref} type="file" accept="image/*" className="hidden"
+              onChange={(e) => { upload(s.key, e.target.files?.[0]); e.target.value = '' }}
+            />
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-600">
+        Kommen ins eBay-Listing (Vorderseite zuerst). Das Scan-Foto ist automatisch die Vorderseite.
+      </p>
+    </div>
+  )
+}
+
 function getStoredLang() {
   try { return localStorage.getItem('cardvault_search_language') || 'EN' } catch { return 'EN' }
 }
@@ -334,6 +411,9 @@ export default function CardDetailPage() {
               <span className="ml-2 text-blue-600">CM #{card.cm_product_id}</span>
             )}
           </p>
+
+          {/* Seller's own photos for eBay */}
+          <SalePhotos card={card} onChange={setCard} />
         </div>
 
         {/* Right column */}
