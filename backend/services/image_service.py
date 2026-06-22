@@ -68,10 +68,11 @@ def _card_candidates(mask: np.ndarray, area_full: float) -> list[tuple]:
     rectangular, correctly-proportioned blobs.
     """
     out: list[tuple] = []
+    sh, sw = mask.shape[:2]
     contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     for c in contours:
         area = cv2.contourArea(c)
-        if area < 0.06 * area_full or area > 0.985 * area_full:
+        if area < 0.05 * area_full or area > 0.985 * area_full:
             continue
         rect = cv2.minAreaRect(c)
         (_, _), (rw, rh), _ = rect
@@ -85,10 +86,19 @@ def _card_candidates(mask: np.ndarray, area_full: float) -> list[tuple]:
             continue
         # The single strongest signal that we found *the card* (vs the whole
         # photo) is the aspect ratio: a card is almost exactly 0.716. Weight that
-        # heavily (4th power) and use only sqrt(area) so a near-full-frame blob
+        # heavily (4th power) and use only area**0.4 so a near-full-frame blob
         # with an off ratio can't win on size alone.
         ratio_fit = 1.0 - min(abs(ratio - _CARD_RATIO) / _CARD_RATIO, 1.0)
-        score = (ratio_fit ** 4) * rectangularity * (area ** 0.5)
+        # A card photographed within a frame has a margin around it. A blob that
+        # spans the whole photo (touches every edge) is almost always the frame
+        # itself — a 3:4 phone photo's 0.75 ratio is deceptively card-like. Penalise
+        # edge-spanning blobs so a smaller, correctly-proportioned card region wins;
+        # don't reject them, since genuine full-frame scans (card fills the photo)
+        # have no competing candidate and should still pass.
+        x, y, bw, bh = cv2.boundingRect(c)
+        touch = (x <= 2) + (y <= 2) + (x + bw >= sw - 2) + (y + bh >= sh - 2)
+        edge_penalty = 0.25 if touch >= 3 else (0.7 if touch == 2 else 1.0)
+        score = (ratio_fit ** 4) * rectangularity * (area ** 0.4) * edge_penalty
         out.append((score, rect))
     return out
 
@@ -123,6 +133,15 @@ def _auto_crop_card(cv_img: np.ndarray) -> np.ndarray | None:
     dark_mask = (hsv[:, :, 2] < 60).astype(np.uint8) * 255
     m1 = cv2.bitwise_or(sat_mask, dark_mask)
     masks.append(cv2.morphologyEx(m1, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8)))
+
+    # Strategy 1b: a colourful card on an achromatic (gray / white) surface — the
+    # card art is saturated, the background isn't. This isolates cards that fill
+    # only PART of the frame, which the brightness/edge masks tend to merge into
+    # the background (a real-world failure: a German card on a dotted cutting mat).
+    sat_fixed = (hsv[:, :, 1] > 35).astype(np.uint8) * 255
+    sat_fixed = cv2.morphologyEx(sat_fixed, cv2.MORPH_CLOSE, np.ones((35, 35), np.uint8))
+    sat_fixed = cv2.morphologyEx(sat_fixed, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
+    masks.append(sat_fixed)
 
     # Strategy 2: Canny edges → dilate/close into solid card region.
     edges = cv2.Canny(cv2.GaussianBlur(gray, (5, 5), 0), 30, 120)

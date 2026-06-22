@@ -239,6 +239,46 @@ def _fanout_bottom_texts(cv_img: np.ndarray) -> list[str]:
     return texts
 
 
+def _number_focus_texts(cv_img: np.ndarray) -> list[str]:
+    """Targeted recovery of the collector number from the bottom-left corner.
+
+    On modern cards the small italic "NNN/TTT" sits on the light card border and a
+    whole-strip Otsu read often misses it (the number is tiny and low-contrast, and
+    a dotted background can swamp it). A morphological **black-hat** pulls the dark
+    digits off the bright background, and an adaptive threshold copes with the card's
+    colour gradient; sparse/line PSMs + a digit whitelist then read it cleanly.
+    Bounded (≤8 calls, early-exit) and only invoked when the cheap pass found no
+    number — this is what makes 'card fills part of the frame' photos identify."""
+    h, w = cv_img.shape[:2]
+    bh_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (31, 31))
+    texts: list[str] = []
+    for (y0, y1, x0, x1) in (
+        (0.85, 0.93, 0.0, 0.45),    # bottom-left band (most modern layouts)
+        (0.85, 0.99, 0.0, 0.55),    # wider + lower (crop margin / older layouts)
+    ):
+        reg = cv_img[int(h * y0):int(h * y1), int(w * x0):int(w * x1)]
+        if reg.size == 0:
+            continue
+        gray = cv2.cvtColor(reg, cv2.COLOR_BGR2GRAY)
+        sc = min(max(1.0, 1500.0 / max(1, gray.shape[1])), 5.0)
+        gray = cv2.resize(
+            gray, (round(gray.shape[1] * sc), round(gray.shape[0] * sc)),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, bh_kernel)
+        _, bh_bin = cv2.threshold(blackhat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        adapt = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 81, 18,
+        )
+        for im in (bh_bin, adapt):
+            for psm in (11, 7):
+                texts.append(_ocr(im, lang="eng", psm=psm, whitelist=_NUM_WHITELIST))
+        _, n, t = _vote(texts)
+        if n and t:
+            break
+    return texts
+
+
 def _resolve_bottom(
     texts: list[str], cv_img: np.ndarray, do_fanout: bool = True,
 ) -> tuple[str | None, str | None, str | None]:
@@ -285,23 +325,23 @@ def read_card_bottom(
 
     flipped = cv2.rotate(cv_img, cv2.ROTATE_180)
 
-    # 1) Cheap probe — often a single OCR call. A readable collector number is
-    #    enough: the card is identified downstream via number(+total). We no longer
-    #    require the set code here — it mis-reads often, and requiring it used to
-    #    force the expensive corner fan-out on nearly every card (~20 s).
-    up_texts = list(_cheap_bottom_texts(cv_img))
-    c, n, t = _vote(up_texts)
-    if n:
-        return c, n, t, cv_img
+    # For each orientation: a cheap full-strip read (often one OCR call), then a
+    # focused bottom-left recovery for the small italic collector number when the
+    # strip didn't yield one. A readable number is enough — the card is identified
+    # downstream via number(+total); the flaky 3-letter set code isn't required.
+    up_texts: list[str] = []
+    for img in (cv_img, flipped):
+        texts = list(_cheap_bottom_texts(img))
+        c, n, t = _vote(texts)
+        if not n:
+            texts += _number_focus_texts(img)
+            c, n, t = _vote(texts)
+        if img is cv_img:
+            up_texts = texts
+        if n:
+            return c, n, t, img
 
-    # 2) No number upright → the auto-crop may have left the card upside-down.
-    #    Probe the flipped orientation cheaply.
-    fl_texts = list(_cheap_bottom_texts(flipped))
-    c2, n2, t2 = _vote(fl_texts)
-    if n2:
-        return c2, n2, t2, flipped
-
-    # 3) Neither orientation yielded a number → expensive corner fan-out ONCE.
+    # Last resort: expensive corner fan-out on the upright orientation.
     c, n, t = _resolve_bottom(up_texts, cv_img)
     return c, n, t, cv_img
 
