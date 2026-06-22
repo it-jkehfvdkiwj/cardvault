@@ -75,7 +75,11 @@ _NUM_WHITELIST = "0123456789/"
 # ── Tesseract helpers ─────────────────────────────────────────────────────────
 
 def _tessdata_arg() -> str:
-    if TESSDATA_DIR and os.path.isdir(TESSDATA_DIR):
+    # Only force the bundled tessdata dir if it actually contains the models.
+    # In the deployed image the dir exists but is empty, so forcing it makes every
+    # OCR call fail silently — fall back to the system tessdata (eng/deu/osd from
+    # the tesseract-ocr* apt packages) in that case.
+    if TESSDATA_DIR and os.path.isfile(os.path.join(TESSDATA_DIR, "eng.traineddata")):
         return f'--tessdata-dir "{TESSDATA_DIR}" '
     return ""
 

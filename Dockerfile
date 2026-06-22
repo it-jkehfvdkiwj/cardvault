@@ -11,6 +11,8 @@ FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-deu \
     libgl1 \
     libglib2.0-0 \
     libffi-dev \

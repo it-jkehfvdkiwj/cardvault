@@ -18,8 +18,12 @@ venv/
 # Uploads (user files, not tracked)
 backend/uploads/
 
-# Tesseract language data (large binary, install separately)
+# Tesseract language data. Ship eng + deu so the deployed container can OCR
+# (the dir is otherwise empty in the image and every OCR call fails silently).
+# osd is large and unused, so keep it out.
 backend/tessdata/*.traineddata
+!backend/tessdata/eng.traineddata
+!backend/tessdata/deu.traineddata
 
 # Frontend build output
 frontend/dist/
