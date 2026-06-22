@@ -495,9 +495,17 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
               )}
             </div>
           ) : (
-            <p className="text-center text-gray-500 py-4 text-sm">
-              No auto-detected candidates — use manual search below.
-            </p>
+            <div className="text-center py-4">
+              <p className="text-gray-500 text-sm">
+                No auto-detected candidates — use manual search below.
+              </p>
+              {result?.debug && (
+                <p className="mt-2 text-[11px] text-amber-500/90 font-mono break-words px-2">
+                  Scan-Diagnose: Code={String(result.debug.code)} · Nr={String(result.debug.number)} ·
+                  Total={String(result.debug.total)} · Crop={result.debug.crop} · Treffer={result.debug.n_candidates}
+                </p>
+              )}
+            </div>
           )}
 
           {/* ── Language variants (same Pokémon, other printings) ── */}

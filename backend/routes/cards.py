@@ -297,6 +297,17 @@ async def upload_cards(
             "identification_method": identification_method,
             "candidates": candidates[:5],
             "language_variants": [],   # loaded lazily; see /cards/scan/variants
+            # Lightweight scan diagnostics, surfaced in the ConfirmModal when no
+            # candidates are found — lets us see what the OCR actually read in
+            # production (crop size, set code, collector number/total).
+            "debug": {
+                "code": set_abbr,
+                "number": card_num,
+                "total": set_total,
+                "crop": f"{cv_img.shape[1]}x{cv_img.shape[0]}",
+                "method": identification_method,
+                "n_candidates": len(candidates),
+            },
         })
 
     return {"results": results}
