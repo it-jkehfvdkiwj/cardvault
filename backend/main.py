@@ -47,15 +47,16 @@ async def health_tcg():
 
     Card identification depends entirely on api.pokemontcg.io, so when every scan
     returns 'no match' this tells us whether the API is reachable/slow from the
-    deploy (vs an OCR problem). Open it in the browser on the deployed URL.
+    deploy (vs an OCR problem). Returns a big, human-readable HTML verdict so it
+    can be read off a phone screen — open it in the browser on the deployed URL.
     """
     import time
+    from fastapi.responses import HTMLResponse
     from services import tcg_api_service
 
-    out = {
-        "has_api_key": bool(os.getenv("POKEMON_TCG_API_KEY", "")),
-        "base": tcg_api_service.TCG_API_BASE,
-    }
+    has_key = bool(os.getenv("POKEMON_TCG_API_KEY", ""))
+    ok = False
+    detail = ""
     t0 = time.perf_counter()
     try:
         resp = await tcg_api_service._client().get(
@@ -63,18 +64,31 @@ async def health_tcg():
             headers=tcg_api_service._get_headers(),
             params={"q": "number:52", "pageSize": 1, "select": "id,name,set"},
         )
-        out["latency_ms"] = round((time.perf_counter() - t0) * 1000)
-        out["status_code"] = resp.status_code
-        out["ok"] = resp.status_code == 200
-        try:
-            out["sample_results"] = len(resp.json().get("data", []))
-        except Exception:
-            out["sample_results"] = None
+        ms = round((time.perf_counter() - t0) * 1000)
+        n = len(resp.json().get("data", []))
+        ok = resp.status_code == 200 and n > 0
+        detail = f"HTTP {resp.status_code} · {ms} ms · {n} Treffer"
     except Exception as exc:
-        out["ok"] = False
-        out["error"] = type(exc).__name__
-        out["latency_ms"] = round((time.perf_counter() - t0) * 1000)
-    return out
+        ms = round((time.perf_counter() - t0) * 1000)
+        detail = f"{type(exc).__name__} nach {ms} ms"
+
+    if ok:
+        head, sub, color = "✅ Karten-API ERREICHBAR", "Dann liegt es nicht an der API — sag Claude Bescheid.", "#16a34a"
+    else:
+        head, sub, color = "❌ Karten-API NICHT erreichbar", "Das ist die Ursache für 'keine Treffer'. Sag Claude diese Meldung.", "#dc2626"
+    keyline = "API-Key: gesetzt ✅" if has_key else "API-Key: NICHT gesetzt ⚠️"
+    html = f"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardVault · API-Check</title></head>
+<body style="font-family:system-ui,sans-serif;background:#0f172a;color:#fff;margin:0;padding:24px;text-align:center">
+<div style="max-width:520px;margin:10vh auto">
+  <div style="font-size:28px;font-weight:800;color:{color};line-height:1.25">{head}</div>
+  <p style="font-size:17px;color:#cbd5e1;margin-top:14px">{sub}</p>
+  <div style="margin-top:22px;padding:14px;border-radius:12px;background:#1e293b;font-size:15px;color:#e2e8f0">
+    {detail}<br>{keyline}
+  </div>
+</div></body></html>"""
+    return HTMLResponse(html)
 
 
 @app.middleware("http")
