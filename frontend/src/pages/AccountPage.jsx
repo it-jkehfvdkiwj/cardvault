@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { User as UserIcon, Lock, Crown, Trash2, Loader, Share2, Copy, ExternalLink } from 'lucide-react'
-import { accountApi } from '../api/client'
+import {
+  User as UserIcon, Lock, Crown, Trash2, Loader, Share2, Copy, ExternalLink,
+  ShoppingBag, ImagePlus, Images,
+} from 'lucide-react'
+import { accountApi, saleApi } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 
 export default function AccountPage() {
@@ -157,6 +160,9 @@ export default function AccountPage() {
         )}
       </div>
 
+      {/* eBay selling photos */}
+      <SalePhotoSettings />
+
       {/* Profile */}
       <form onSubmit={saveProfile} className="panel space-y-3">
         <h2 className="font-semibold flex items-center gap-2"><UserIcon className="w-4 h-4" /> Profil</h2>
@@ -197,6 +203,135 @@ export default function AccountPage() {
           className="bg-pokemon-red hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
           {deleting ? 'Lösche…' : 'Konto endgültig löschen'}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── eBay sale-photo settings ─────────────────────────────────────────────────
+
+function SalePhotoSettings() {
+  const [perCard, setPerCard] = useState(1)
+  const [templates, setTemplates] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
+
+  useEffect(() => {
+    Promise.all([
+      saleApi.getSettings().then(({ data }) => setPerCard(data.photos_per_card || 1)).catch(() => {}),
+      saleApi.listTemplates().then(({ data }) => setTemplates(data.templates || [])).catch(() => {}),
+    ]).finally(() => setLoading(false))
+  }, [])
+
+  async function changePerCard(n) {
+    setPerCard(n)
+    try { await saleApi.updateSettings(n) } catch { toast.error('Konnte Einstellung nicht speichern') }
+  }
+
+  async function upload(e) {
+    const file = e.target.files?.[0]
+    if (file) {
+      setUploading(true)
+      try {
+        const { data } = await saleApi.addTemplate(file, { position: templates.length + 3 })
+        setTemplates((t) => [...t, data])
+        toast.success('Zusatzfoto hinzugefügt')
+      } catch { toast.error('Upload fehlgeschlagen') }
+      setUploading(false)
+    }
+    e.target.value = ''
+  }
+
+  async function setPosition(id, position) {
+    setTemplates((t) => t.map((x) => (x.id === id ? { ...x, position } : x)))
+    try { await saleApi.updateTemplate(id, { position }) } catch {}
+  }
+
+  async function remove(id) {
+    try {
+      await saleApi.deleteTemplate(id)
+      setTemplates((t) => t.filter((x) => x.id !== id))
+    } catch { toast.error('Konnte nicht löschen') }
+  }
+
+  return (
+    <div className="panel space-y-4">
+      <div>
+        <h2 className="font-semibold flex items-center gap-2">
+          <ShoppingBag className="w-4 h-4" /> Verkaufs-Fotos (eBay)
+        </h2>
+        <p className="text-sm text-gray-400 mt-1">
+          Deine eigenen Fotos statt des Katalogbilds. Das Scan-Foto wird automatisch
+          die Vorderseite; eBay übernimmt die Bilder beim CSV-Upload.
+        </p>
+      </div>
+
+      {/* Photos per card */}
+      <div>
+        <label className="block text-xs text-gray-400 mb-1.5">Fotos pro Karte</label>
+        <div className="flex gap-2">
+          {[{ n: 1, label: 'Nur Vorderseite' }, { n: 2, label: 'Vorder- + Rückseite (2er-Pack)' }].map(({ n, label }) => (
+            <button
+              key={n}
+              onClick={() => changePerCard(n)}
+              disabled={loading}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                perCard === n
+                  ? 'bg-pokemon-yellow/15 border-pokemon-yellow/50 text-pokemon-yellow font-medium'
+                  : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Template photos */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs text-gray-400 flex items-center gap-1.5">
+            <Images className="w-3.5 h-3.5" /> Feste Zusatzfotos (in jedem Listing)
+          </label>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="btn-secondary text-xs flex items-center gap-1.5 py-1"
+          >
+            {uploading ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
+            Hinzufügen
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={upload} />
+        </div>
+
+        {templates.length === 0 ? (
+          <p className="text-xs text-gray-600">
+            Noch keine — z. B. Versandhinweis, Zustands-Übersicht oder dein Logo.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {templates.map((t) => (
+              <div key={t.id} className="relative bg-gray-800 rounded-lg p-1.5 flex flex-col gap-1">
+                <img src={t.url} alt={t.label || 'Zusatzfoto'} className="w-full h-24 object-contain rounded bg-gray-900" />
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-gray-500">Position</span>
+                  <input
+                    type="number" min={1} max={24} value={t.position || 3}
+                    onChange={(e) => setPosition(t.id, Number(e.target.value))}
+                    className="w-12 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-xs text-white"
+                  />
+                  <button onClick={() => remove(t.id)} className="ml-auto text-gray-500 hover:text-pokemon-red" title="Entfernen">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-[11px] text-gray-600 mt-1.5">
+          Reihenfolge im Listing: Vorderseite, Rückseite, dann Zusatzfotos nach Position.
+        </p>
       </div>
     </div>
   )
