@@ -22,8 +22,9 @@ services:
       - caddy_config:/config  # holt Caddy bei jedem Neustart neue an und
                               # läuft irgendwann in Let's-Encrypt-Limits
     environment:
-      - SITE_DOMAIN=${SITE_DOMAIN:?Setze SITE_DOMAIN in der .env, z. B. cardvault.de}
-      - ACME_EMAIL=${ACME_EMAIL:?Setze ACME_EMAIL in der .env}
+      # Quoted aus demselben Grund wie in docker-compose.yml.
+      - "SITE_DOMAIN=${SITE_DOMAIN:?fehlt in der .env, z. B. cardeva.de}"
+      - "ACME_EMAIL=${ACME_EMAIL:?fehlt in der .env}"
     depends_on:
       - frontend
     restart: unless-stopped

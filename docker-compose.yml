@@ -33,9 +33,12 @@ services:
       - UPLOAD_DIR=/app/backend/uploads
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-25}
       # ── Required — the app refuses to start in production without these ────
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env — generate with: python -c "import secrets;print(secrets.token_urlsafe(48))"}
-      - CORS_ORIGINS=${CORS_ORIGINS:?Set CORS_ORIGINS in .env, e.g. https://deine-domain.de}
-      - APP_BASE_URL=${APP_BASE_URL:?Set APP_BASE_URL in .env, e.g. https://deine-domain.de}
+      # Quoted, and without ": " inside the messages: an unquoted YAML scalar
+      # containing a colon-space is parsed as a mapping, which makes compose
+      # reject the whole entry ("unexpected type map[string]interface {}").
+      - "JWT_SECRET=${JWT_SECRET:?fehlt in der .env - erzeugen mit openssl rand -base64 48}"
+      - "CORS_ORIGINS=${CORS_ORIGINS:?fehlt in der .env, z. B. https://deine-domain.de}"
+      - "APP_BASE_URL=${APP_BASE_URL:?fehlt in der .env, z. B. https://deine-domain.de}"
       - ADMIN_EMAILS=${ADMIN_EMAILS:-}
       # ── Closed test: invite-only registration + no search indexing ─────────
       - PRIVATE_BETA=${PRIVATE_BETA:-true}
