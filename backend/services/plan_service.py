@@ -7,7 +7,19 @@ Two tiers:
 
 Limits live here so the API, the UI (via /api/billing/plans) and enforcement all
 read the same source of truth.
+
+Launch mode
+-----------
+``FREE_LAUNCH=true`` (the default until Stripe goes live) unlocks every Pro
+feature for every account. It is a single, explicit switch rather than the old
+"demo upgrade" button, which let any user silently flip their own ``plan`` column
+to ``pro`` — that state would then survive the switch to real billing and hand
+out free Pro accounts forever. With ``FREE_LAUNCH`` nothing is written to the
+database: flip the env var to ``false`` and everyone falls back to their real
+plan the same second.
 """
+
+import os
 
 from sqlalchemy.orm import Session
 
@@ -52,7 +64,14 @@ PLANS: dict[str, dict] = {
 DEFAULT_PLAN = "free"
 
 
+def free_launch() -> bool:
+    """During the launch phase every account gets the full Pro feature set."""
+    return os.getenv("FREE_LAUNCH", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def plan_of(user: User) -> dict:
+    if free_launch():
+        return PLANS["pro"]
     return PLANS.get(user.plan or DEFAULT_PLAN, PLANS[DEFAULT_PLAN])
 
 
@@ -87,14 +106,18 @@ def usage(db: Session, user: User) -> dict:
 
 def serialize_user(user: User, db: Session) -> dict:
     plan = plan_of(user)
+    launch = free_launch()
     return {
         "id": user.id,
         "email": user.email,
         "display_name": user.display_name or user.email.split("@")[0],
         "is_admin": bool(user.is_admin),
         "is_active": bool(user.is_active),
+        # The *stored* plan stays untouched during the launch phase; the UI reads
+        # `free_launch` to explain why everything is unlocked.
         "plan": user.plan or DEFAULT_PLAN,
-        "plan_name": plan["name"],
+        "plan_name": "Launch — alles frei" if launch else plan["name"],
+        "free_launch": launch,
         "features": plan["features"],
         "usage": usage(db, user),
         "subscription_status": user.subscription_status,

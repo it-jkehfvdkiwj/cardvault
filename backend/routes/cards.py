@@ -1,3 +1,5 @@
+import asyncio
+import os
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -8,8 +10,10 @@ from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+import config
 from database import get_db
 from models import Card, CardHashIndex, User
+from services.rate_limit import rate_limit
 from services import (
     auth_service,
     cardmarket_service,
@@ -30,6 +34,32 @@ HASH_GOOD_MATCH = 10
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+async def _read_limited(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload, refusing anything over ``max_bytes``.
+
+    ``UploadFile.read()`` with no argument pulls the entire file into RAM, so a
+    single crafted request could otherwise exhaust the instance's memory. We
+    read in chunks and bail out as soon as the limit is passed.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"„{file.filename or 'Bild'}“ ist zu groß "
+                    f"(max. {max_bytes // (1024 * 1024)} MB pro Bild)."
+                ),
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
 
 def _set_total_plausible(card_detail: dict, ocr_total: Optional[str]) -> bool:
     """
@@ -139,7 +169,47 @@ def get_collection_ids(
 
 # ── Upload & identification pipeline ─────────────────────────────────────────
 
-@router.post("/upload")
+# CPU-stage concurrency: image decode + Tesseract OCR are offloaded to worker
+# threads (Tesseract runs as a subprocess, so threads give true parallelism).
+# Bounded so a 50-file batch doesn't fork dozens of Tesseract processes at once.
+_CPU_STAGE_CONCURRENCY = max(2, min(4, (os.cpu_count() or 4) // 2))
+
+
+def _cpu_stage_front(raw_bytes: bytes) -> dict:
+    """Blocking CPU work for one card front: decode, crop, bottom OCR.
+
+    Runs in a worker thread — must not touch the DB or the event loop.
+    """
+    pil_img, cv_img = image_service.preprocess_card_image(raw_bytes)
+    set_abbr = card_num = set_total = None
+    try:
+        set_abbr, card_num, set_total, cv_img = ocr_service.read_card_bottom(cv_img)
+    except Exception:
+        pass
+    temp_filename = f"tmp_{uuid.uuid4().hex}.jpg"
+    local_path = image_service.save_image(pil_img, temp_filename)
+    return {
+        "cv_img": cv_img,
+        "local_path": local_path,
+        "thumbnail_url": f"/uploads/{temp_filename}",
+        "set_abbr": set_abbr,
+        "card_num": card_num,
+        "set_total": set_total,
+    }
+
+
+def _cpu_stage_back(raw_bytes: bytes) -> str:
+    """Blocking CPU work for a back photo (pairs mode): decode, crop, save."""
+    pil_b, _ = image_service.preprocess_card_image(raw_bytes)
+    return image_service.save_image(pil_b, f"tmp_{uuid.uuid4().hex}.jpg")
+
+
+@router.post(
+    "/upload",
+    # Scanning is the most expensive thing the server does (decode + OCR + API
+    # lookups per image). Without a cap, one tab can starve every other user.
+    dependencies=[Depends(rate_limit("upload", 30, 300))],
+)
 async def upload_cards(
     files: list[UploadFile] = File(...),
     set_code: Optional[str] = Form(None),
@@ -148,23 +218,19 @@ async def upload_cards(
     user: User = Depends(auth_service.get_current_user),
 ):
     if len(files) > 50:
-        raise HTTPException(status_code=400, detail="Maximum 50 files per upload")
+        raise HTTPException(status_code=400, detail="Maximal 50 Bilder pro Upload.")
 
-    results = []
+    # ── Phase 1: read bytes + validate (fast, sequential) ─────────────────────
+    # In "2er-Pack" mode files arrive as [front, back, front, back, …]: even
+    # indexes are fronts (identified below); odd indexes are backs — cropped,
+    # stored and attached to the preceding front so confirm() keeps them.
+    entries: list[dict] = []          # one per FRONT file, in order
+    max_bytes = config.max_upload_bytes()
     for idx, file in enumerate(files):
-        # "2er-Pack" mode: files arrive as [front, back, front, back, …]. Even
-        # indexes are fronts (identified below); odd indexes are backs — we just
-        # crop+store them and attach the path to the preceding front's result so
-        # confirm() can keep it as the card's back photo.
         if pairs and idx % 2 == 1:
-            try:
-                pil_b, _ = image_service.preprocess_card_image(await file.read())
-                bname = f"tmp_{uuid.uuid4().hex}.jpg"
-                bpath = image_service.save_image(pil_b, bname)
-                if results:
-                    results[-1]["back_local_path"] = bpath
-            except Exception:
-                pass
+            raw = await _read_limited(file, max_bytes)
+            if entries:
+                entries[-1]["back_raw"] = raw
             continue
 
         # Accept by MIME type OR by image file extension — browsers often send
@@ -176,21 +242,58 @@ async def upload_cards(
                 ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".bmp", ".tiff",
             ))
         )
-        if not is_image:
-            results.append({"filename": file.filename, "error": "Not an image file"})
+        entries.append({
+            "filename": file.filename,
+            "raw": await _read_limited(file, max_bytes) if is_image else None,
+            "is_image": is_image,
+            "back_raw": None,
+        })
+
+    # ── Phase 2: CPU stage (decode + OCR) — concurrent worker threads ─────────
+    sem = asyncio.Semaphore(_CPU_STAGE_CONCURRENCY)
+
+    async def run_front(entry: dict):
+        if not entry["is_image"]:
+            return None
+        async with sem:
+            try:
+                return await asyncio.to_thread(_cpu_stage_front, entry["raw"])
+            except Exception as exc:
+                return {"error": f"Image processing failed: {exc}"}
+
+    async def run_back(entry: dict):
+        if not entry.get("back_raw"):
+            return None
+        async with sem:
+            try:
+                return await asyncio.to_thread(_cpu_stage_back, entry["back_raw"])
+            except Exception:
+                return None
+
+    cpu_results, back_paths = await asyncio.gather(
+        asyncio.gather(*(run_front(e) for e in entries)),
+        asyncio.gather(*(run_back(e) for e in entries)),
+    )
+
+    # ── Phase 3: identification lookups (async API + DB) — sequential ─────────
+    # The DB session must not be shared across threads, and these calls are
+    # cache-backed / network-bound, so sequential is both safe and fast here.
+    results = []
+    for entry, cpu, back_path in zip(entries, cpu_results, back_paths):
+        if not entry["is_image"]:
+            results.append({"filename": entry["filename"], "error": "Not an image file"})
+            continue
+        if cpu is None or cpu.get("error"):
+            results.append({
+                "filename": entry["filename"],
+                "error": (cpu or {}).get("error", "Image processing failed"),
+            })
             continue
 
-        raw_bytes = await file.read()
-        try:
-            pil_img, cv_img = image_service.preprocess_card_image(raw_bytes)
-        except Exception as exc:
-            results.append({"filename": file.filename, "error": f"Image processing failed: {exc}"})
-            continue
-
-        # Save preprocessed thumbnail regardless of match outcome
-        temp_filename = f"tmp_{uuid.uuid4().hex}.jpg"
-        local_path = image_service.save_image(pil_img, temp_filename)
-        thumbnail_url = f"/uploads/{temp_filename}"
+        cv_img = cpu["cv_img"]
+        local_path = cpu["local_path"]
+        thumbnail_url = cpu["thumbnail_url"]
+        set_abbr, card_num, set_total = cpu["set_abbr"], cpu["card_num"], cpu["set_total"]
 
         candidates: list[dict] = []
         ocr_name: str = ""
@@ -198,16 +301,6 @@ async def upload_cards(
         detected_language: str = "EN"
         identification_method: str = "none"
         identified_early: bool = False  # True when set+number gave a direct hit
-
-        # ── Step 0: read the bottom set code + collector number ───────────
-        # Modern cards print e.g. "PAF 018/091" at the bottom-left. This is the
-        # most reliable, language-independent identifier. read_card_bottom also
-        # corrects 180° orientation, so cv_img below is upright.
-        set_abbr = card_num = set_total = None
-        try:
-            set_abbr, card_num, set_total, cv_img = ocr_service.read_card_bottom(cv_img)
-        except Exception:
-            pass
 
         # 0a: exact set code + number → direct TCG ID.
         code_card = None
@@ -239,7 +332,9 @@ async def upload_cards(
                 # this fast path we skip the (multi-pass, bilingual) name OCR and
                 # only fall back to it when there's no total to disambiguate.
                 if not set_total:
-                    ocr_name_raw = ocr_service.extract_card_name(cv_img) or ""
+                    ocr_name_raw = await asyncio.to_thread(
+                        ocr_service.extract_card_name, cv_img
+                    ) or ""
                 num_matches = await tcg_api_service.find_by_number_total(
                     card_num, set_total, db, ocr_name_raw or None
                 )
@@ -268,7 +363,7 @@ async def upload_cards(
         hash_match, hamming = None, hash_service.MAX_BITS + 1
 
         if not identified_early:
-            phash = hash_service.compute_phash(cv_img)
+            phash = await asyncio.to_thread(hash_service.compute_phash, cv_img)
             if phash:
                 hash_match, hamming = hash_service.find_best_match(phash, db)
 
@@ -280,7 +375,7 @@ async def upload_cards(
         if not identified_early and not ocr_name_raw and (
             not candidates or (hamming is not None and hamming > HASH_GOOD_MATCH)
         ):
-            ocr_name_raw = ocr_service.extract_card_name(cv_img)
+            ocr_name_raw = await asyncio.to_thread(ocr_service.extract_card_name, cv_img)
             if ocr_name_raw and identification_method == "none":
                 identification_method = "ocr"
 
@@ -308,7 +403,8 @@ async def upload_cards(
         # it lazily via GET /cards/scan/variants once the result is on screen, so
         # the scan response stays fast.
         results.append({
-            "filename": file.filename,
+            "filename": entry["filename"],
+            **({"back_local_path": back_path} if back_path else {}),
             "ocr_name": ocr_name_raw,           # raw OCR (shown in UI subtitle)
             "ocr_name_translated": ocr_name,    # English name used for search
             "detected_language": detected_language,
@@ -814,9 +910,9 @@ async def upload_card_photo(
     if slot not in ("front", "back"):
         raise HTTPException(status_code=400, detail="slot must be 'front' or 'back'")
     card = _get_owned_card(card_id, user, db)
-    data = await file.read()
+    data = await _read_limited(file, config.max_upload_bytes())
     if not data:
-        raise HTTPException(status_code=400, detail="Empty file")
+        raise HTTPException(status_code=400, detail="Die Datei ist leer.")
     rel = sale_photo_service.save_bytes(data, file.filename)
     old = card.photo_front if slot == "front" else card.photo_back
     if slot == "front":

@@ -1,42 +1,127 @@
+/* Self-hosted fonts.
+ *
+ * These used to be loaded from fonts.googleapis.com, which sends every
+ * visitor's IP address to Google. German courts have treated that as an
+ * actionable GDPR violation (LG München I, 3 O 17493/20), and it is an easy
+ * thing to be warned over. Bundling them removes the third-party request
+ * entirely — and makes first paint faster, since there is no extra DNS +
+ * TLS handshake before text can render.
+ *
+ * Only the latin subset and the weights actually used are imported.
+ */
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-700.css';
+@import '@fontsource/inter/latin-800.css';
+@import '@fontsource/sora/latin-600.css';
+@import '@fontsource/sora/latin-700.css';
+@import '@fontsource/sora/latin-800.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply bg-pokemon-dark text-gray-100 min-h-screen;
+    @apply bg-pokemon-dark text-ink min-h-screen antialiased;
+    /* A whisper of warmth in the corners so large empty areas aren't a flat
+       sheet of white. Much subtler than the dark theme's glows — on light
+       backgrounds anything stronger looks like a printing error. */
+    background-image:
+      radial-gradient(1100px 520px at 85% -12%, rgba(240, 180, 41, 0.07), transparent 62%),
+      radial-gradient(900px 500px at -10% 108%, rgba(3, 105, 161, 0.04), transparent 60%);
+    background-attachment: fixed;
   }
   ::-webkit-scrollbar {
-    @apply w-1.5;
+    @apply w-1.5 h-1.5;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-pokemon-card;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-600 rounded-full;
+    @apply bg-surface-3 rounded-full;
+  }
+  ::selection {
+    @apply bg-accent/35 text-ink;
+  }
+  /* Visible keyboard focus everywhere. The dark theme relied on the amber ring
+     being obvious against near-black; on white it needs stating explicitly. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-pokemon-dark rounded-lg;
   }
 }
 
 @layer components {
   .card-hover {
-    @apply transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-pokemon-yellow/10;
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lift hover:border-ink-4/40;
   }
+
+  /* Primary action. On a light page the strongest thing available is near-black,
+     so that carries the main call to action and amber becomes the highlight
+     colour rather than the button colour — amber-on-white can't reach AA for
+     small text no matter how it's tuned. */
   .btn-primary {
-    @apply bg-pokemon-red hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply relative inline-flex items-center justify-center font-semibold px-4 py-2 rounded-xl
+      bg-ink text-white transition-all duration-150
+      hover:bg-ink-2 active:translate-y-px
+      disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-ink;
+    box-shadow: 0 1px 2px rgba(26, 26, 23, 0.14);
   }
+
+  /* The amber variant, for places where the brand colour should lead (hero,
+     upgrade prompts). Dark text on amber is a genuinely high-contrast pair. */
+  .btn-accent {
+    @apply relative inline-flex items-center justify-center font-semibold px-4 py-2 rounded-xl
+      text-ink transition-all duration-150 active:translate-y-px
+      disabled:opacity-40 disabled:cursor-not-allowed;
+    background-color: #F0B429;
+  }
+  .btn-accent:hover:not(:disabled) {
+    background-color: #E0A317;
+  }
+
   .btn-secondary {
-    @apply bg-gray-700 hover:bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg transition-colors;
+    @apply inline-flex items-center justify-center bg-surface hover:bg-surface-2 text-ink
+      font-semibold px-4 py-2 rounded-xl border border-line transition-colors
+      disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    @apply hover:bg-white/10 text-gray-300 hover:text-white px-4 py-2 rounded-lg transition-colors;
+    @apply inline-flex items-center justify-center hover:bg-surface-2 text-ink-2 hover:text-ink
+      px-4 py-2 rounded-xl transition-colors;
   }
+  .btn-danger {
+    @apply inline-flex items-center justify-center bg-rose-600 hover:bg-rose-700 text-white
+      font-semibold px-4 py-2 rounded-xl transition-colors disabled:opacity-40;
+  }
+
   .input {
-    @apply bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-pokemon-yellow transition-colors w-full;
+    @apply bg-white border border-line rounded-xl px-3 py-2 text-ink placeholder-ink-4
+      focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25
+      transition-all w-full;
   }
+
   .panel {
-    @apply bg-pokemon-card rounded-xl border border-gray-800 p-4;
+    @apply bg-surface rounded-2xl border border-line p-4 shadow-card;
   }
+
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  /* Skeleton shimmer for loading states. On light surfaces the sweep has to be
+     darker than the base, not lighter — a white sweep on near-white is invisible. */
+  .skeleton {
+    @apply relative overflow-hidden bg-surface-2 rounded-xl;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background: linear-gradient(90deg, transparent, rgba(26, 26, 23, 0.05), transparent);
+  }
+
+  /* Section heading used across pages */
+  .page-title {
+    @apply text-2xl font-bold tracking-tight font-display;
   }
 }

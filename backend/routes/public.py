@@ -3,11 +3,17 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Card, User
+from services.rate_limit import rate_limit
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
 
-@router.get("/{slug}")
+@router.get(
+    "/{slug}",
+    # The only unauthenticated data endpoint — cap it so nobody can enumerate
+    # slugs or scrape collections at speed.
+    dependencies=[Depends(rate_limit("public", 60, 60))],
+)
 def public_collection(
     slug: str,
     for_trade: bool = Query(False, description="Only cards marked for trade/sale"),

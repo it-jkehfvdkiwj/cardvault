@@ -4,15 +4,34 @@ import { BrowserRouter } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import App from './App'
 import { AuthProvider } from './auth/AuthContext'
+import ErrorBoundary from './components/ErrorBoundary'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              duration: 3000,
+              // Match the app surface. On a light UI the toast needs a real
+              // shadow to separate from the page — a border alone disappears.
+              style: {
+                background: '#FFFFFF',
+                color: '#1A1A17',
+                border: '1px solid #E4E1D9',
+                borderRadius: '12px',
+                fontSize: '14px',
+                boxShadow: '0 2px 4px rgba(26,26,23,.05), 0 12px 32px -16px rgba(26,26,23,.25)',
+              },
+              error: { duration: 5000 },
+            }}
+          />
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>
 )

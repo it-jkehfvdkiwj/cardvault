@@ -17,7 +17,7 @@ const COLORS = {
 }
 
 export function ConditionBadge({ condition }) {
-  const cls = COLORS[condition] || 'bg-gray-700 text-gray-300'
+  const cls = COLORS[condition] || 'bg-surface-3 text-ink-2'
   return <span className={`badge ${cls}`}>{condition}</span>
 }
 

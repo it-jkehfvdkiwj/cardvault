@@ -78,9 +78,17 @@ async def add_template(
     db: Session = Depends(get_db),
     user: User = Depends(auth_service.get_current_user),
 ):
-    data = await file.read()
+    import config
+    from routes.cards import _read_limited
+
+    data = await _read_limited(file, config.max_upload_bytes())
     if not data:
-        raise HTTPException(status_code=400, detail="Empty file")
+        raise HTTPException(status_code=400, detail="Die Datei ist leer.")
+    if db.query(SaleTemplatePhoto).filter(SaleTemplatePhoto.user_id == user.id).count() >= 20:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximal 20 Vorlagen-Fotos. Bitte lösche zuerst eines.",
+        )
     rel = sale_photo_service.save_bytes(data, file.filename)
     tpl = SaleTemplatePhoto(
         user_id=user.id, path=rel, label=label, position=max(1, position),

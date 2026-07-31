@@ -9,7 +9,7 @@ export default function LanguageBadge({ language = 'EN', forceShow = false, clas
   return (
     <span
       title={langLabel(language)}
-      className={`inline-flex items-center gap-0.5 badge bg-gray-700 text-gray-200 text-[11px] ${className}`}
+      className={`inline-flex items-center gap-0.5 badge bg-surface-3 text-ink text-[11px] ${className}`}
     >
       {langFlag(language)} {language}
     </span>

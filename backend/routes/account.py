@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,7 +7,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Card, User, Wantlist
+from models import (
+    Card, CollectionSnapshot, MarketplaceConnection, MarketplaceListing,
+    SaleTemplatePhoto, User, Wantlist,
+)
 from services import auth_service, plan_service
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -58,11 +62,16 @@ def change_password(
 ):
     if not auth_service.verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
-    if len(payload.new_password) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    problem = auth_service.password_problem(payload.new_password)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
     user.password_hash = auth_service.hash_password(payload.new_password)
+    # Invalidates tokens on every *other* device; we hand this one a fresh token
+    # below so the user isn't kicked out of the session they're using.
+    user.password_changed_at = datetime.now(timezone.utc)
     db.commit()
-    return {"ok": True}
+    db.refresh(user)
+    return {"ok": True, "access_token": auth_service.create_access_token(user.id)}
 
 
 @router.put("/sharing")
@@ -93,9 +102,24 @@ def delete_account(
 ):
     if not auth_service.verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Password is incorrect")
-    # Remove the user's data, then the account.
-    db.query(Card).filter(Card.user_id == user.id).delete()
-    db.query(Wantlist).filter(Wantlist.user_id == user.id).delete()
+
+    # Erase *everything* belonging to the account — Art. 17 GDPR ("right to
+    # erasure"), and it also keeps foreign keys from pointing at a dead user.
+    # Uploaded photo files are removed first, while we still know their paths.
+    from services import sale_photo_service
+
+    for card in db.query(Card).filter(Card.user_id == user.id).all():
+        sale_photo_service.delete(card.photo_front)
+        sale_photo_service.delete(card.photo_back)
+    for tpl in db.query(SaleTemplatePhoto).filter(SaleTemplatePhoto.user_id == user.id).all():
+        sale_photo_service.delete(tpl.path)
+
+    for model in (
+        MarketplaceListing, MarketplaceConnection, SaleTemplatePhoto,
+        CollectionSnapshot, Card, Wantlist,
+    ):
+        db.query(model).filter(model.user_id == user.id).delete(synchronize_session=False)
+
     db.delete(user)
     db.commit()
     return {"ok": True}

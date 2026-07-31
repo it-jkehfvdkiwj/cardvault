@@ -39,9 +39,9 @@ export function ForgotPasswordPage() {
     return (
       <Shell>
         <div className="text-center space-y-3">
-          <CheckCircle className="w-10 h-10 text-green-400 mx-auto" />
+          <CheckCircle className="w-10 h-10 text-green-700 mx-auto" />
           <h1 className="font-bold text-lg">E-Mail unterwegs</h1>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-ink-3">
             Falls ein Konto mit dieser Adresse existiert, haben wir einen Link zum
             Zurücksetzen gesendet. Schau auch im Spam-Ordner.
           </p>
@@ -54,10 +54,10 @@ export function ForgotPasswordPage() {
   return (
     <Shell>
       <h1 className="font-bold text-lg mb-1">Passwort vergessen?</h1>
-      <p className="text-sm text-gray-400 mb-4">Wir senden dir einen Link zum Zurücksetzen.</p>
+      <p className="text-sm text-ink-3 mb-4">Wir senden dir einen Link zum Zurücksetzen.</p>
       <form onSubmit={submit} className="space-y-3">
         <div className="relative">
-          <Mail className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Mail className="w-4 h-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2" />
           <input className="input pl-9" type="email" placeholder="E-Mail" required
             value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
         </div>
@@ -65,7 +65,7 @@ export function ForgotPasswordPage() {
           {busy ? <Loader className="w-4 h-4 animate-spin" /> : null} Link senden
         </button>
       </form>
-      <p className="text-center text-xs text-gray-600 mt-4">
+      <p className="text-center text-xs text-ink-4 mt-4">
         <Link to="/login" className="text-pokemon-yellow hover:underline">Zurück zum Login</Link>
       </p>
     </Shell>
@@ -95,7 +95,7 @@ export function ResetPasswordPage() {
   if (!token) {
     return (
       <Shell>
-        <p className="text-center text-sm text-gray-400">
+        <p className="text-center text-sm text-ink-3">
           Ungültiger Link. <Link to="/forgot-password" className="text-pokemon-yellow hover:underline">Neuen anfordern</Link>
         </p>
       </Shell>
@@ -107,7 +107,7 @@ export function ResetPasswordPage() {
       <h1 className="font-bold text-lg mb-4">Neues Passwort setzen</h1>
       <form onSubmit={submit} className="space-y-3">
         <div className="relative">
-          <Lock className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Lock className="w-4 h-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2" />
           <input className="input pl-9" type="password" placeholder="Neues Passwort (min. 8 Zeichen)"
             required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password" />

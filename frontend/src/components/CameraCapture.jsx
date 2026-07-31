@@ -162,13 +162,13 @@ export default function CameraCapture({ onCapture, onClose, pairMode = false }) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-      <div className="bg-pokemon-card border border-gray-700 rounded-2xl w-full max-w-2xl max-h-[94vh] flex flex-col shadow-2xl">
+      <div className="bg-pokemon-card border border-line rounded-2xl w-full max-w-2xl max-h-[94vh] flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-700 shrink-0">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-line shrink-0">
           <h2 className="font-bold text-lg flex items-center gap-2">
             <Camera className="w-5 h-5 text-pokemon-yellow" /> Karte scannen
           </h2>
-          <button onClick={handleClose} className="text-gray-500 hover:text-white">
+          <button onClick={handleClose} className="text-ink-3 hover:text-ink">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -176,33 +176,33 @@ export default function CameraCapture({ onCapture, onClose, pairMode = false }) 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {error ? (
-            <div className="text-center text-red-400 py-10 px-4 text-sm">{error}</div>
+            <div className="text-center text-red-600 py-10 px-4 text-sm">{error}</div>
           ) : (
             <>
               {/* Live preview with card-shaped framing guide */}
               <div className="relative bg-black rounded-xl overflow-hidden aspect-video flex items-center justify-center">
                 <video ref={videoRef} playsInline muted className="w-full h-full object-contain" />
                 {!ready && (
-                  <div className="absolute inset-0 flex items-center justify-center text-gray-500">
+                  <div className="absolute inset-0 flex items-center justify-center text-white/70">
                     <Loader className="w-6 h-6 animate-spin" />
                   </div>
                 )}
                 {/* Card aspect-ratio guide (2.5 : 3.5) */}
                 {ready && (
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                    <div className="border-2 border-pokemon-yellow/80 rounded-lg h-[85%] aspect-[5/7]" />
+                    <div className="border-2 border-accent rounded-lg h-[85%] aspect-[5/7]" />
                   </div>
                 )}
               </div>
 
               {pairMode && (
                 <div className="text-center">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-pokemon-yellow/15 text-pokemon-yellow border border-pokemon-yellow/30">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-accent-soft text-accent-ink border border-accent/50">
                     2er-Pack · Nächste Aufnahme: {shots.length % 2 === 0 ? '🃏 Vorderseite' : '🔄 Rückseite'}
                   </span>
                 </div>
               )}
-              <p className="text-xs text-gray-400 text-center">
+              <p className="text-xs text-ink-3 text-center">
                 Karte gerade und formatfüllend in den gelben Rahmen halten. Gute Beleuchtung,
                 keine Spiegelungen — am wichtigsten ist die Set-Nummer unten (z. B. 018/091).
               </p>
@@ -212,9 +212,9 @@ export default function CameraCapture({ onCapture, onClose, pairMode = false }) 
                 <div className="flex flex-wrap gap-2">
                   {shots.map((s, i) => (
                     <div key={i} className="relative group">
-                      <img src={s.url} alt={`Aufnahme ${i + 1}`} className="w-16 h-24 object-cover rounded-lg border border-gray-700" />
+                      <img src={s.url} alt={`Aufnahme ${i + 1}`} className="w-16 h-24 object-cover rounded-lg border border-line" />
                       {pairMode && (
-                        <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-center text-gray-200 rounded-b-lg py-0.5">
+                        <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-center text-white rounded-b-lg py-0.5">
                           {i % 2 === 0 ? 'Vorder' : 'Rück'}
                         </span>
                       )}
@@ -235,7 +235,7 @@ export default function CameraCapture({ onCapture, onClose, pairMode = false }) 
 
         {/* Footer / controls */}
         {!error && (
-          <div className="flex items-center justify-between gap-2 px-5 py-4 border-t border-gray-700 shrink-0">
+          <div className="flex items-center justify-between gap-2 px-5 py-4 border-t border-line shrink-0">
             <button
               onClick={switchCamera}
               disabled={devices.length < 2}

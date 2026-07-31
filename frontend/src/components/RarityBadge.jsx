@@ -1,5 +1,5 @@
 const RARITY_COLORS = {
-  'Common': 'bg-gray-600 text-gray-200',
+  'Common': 'bg-surface-3 text-ink-2',
   'Uncommon': 'bg-green-700 text-green-100',
   'Rare': 'bg-blue-700 text-blue-100',
   'Rare Holo': 'bg-indigo-700 text-indigo-100',
@@ -14,7 +14,7 @@ const RARITY_COLORS = {
 
 export default function RarityBadge({ rarity }) {
   if (!rarity) return null
-  const cls = RARITY_COLORS[rarity] || 'bg-gray-700 text-gray-300'
+  const cls = RARITY_COLORS[rarity] || 'bg-surface-3 text-ink-2'
   return (
     <span className={`badge ${cls}`}>{rarity}</span>
   )

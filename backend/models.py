@@ -13,6 +13,9 @@ class User(Base):
     display_name = Column(String)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
+    # Set whenever the password changes; every access token issued before this
+    # moment is rejected, so a reset or a change logs out all other devices.
+    password_changed_at = Column(DateTime)
 
     # Roles / status
     is_admin = Column(Boolean, default=False, nullable=False)
@@ -33,6 +36,10 @@ class User(Base):
     # eBay selling: how many photos per card the seller takes (1 = front only,
     # 2 = front + back / "2er-Pack" capture mode).
     sale_photos_per_card = Column(Integer, default=1, nullable=False)
+
+    # Which invite code this account was created with (closed testing phase).
+    # NULL for accounts made before invites existed, or by an ADMIN_EMAILS address.
+    invite_code = Column(String, index=True)
 
 
 class Card(Base):
@@ -90,6 +97,26 @@ class Wantlist(Base):
     added_at = Column(DateTime, server_default=func.now())
 
 
+class InviteCode(Base):
+    """An invite code for the closed testing phase.
+
+    Codes can also come from the ``INVITE_CODES`` env var — that keeps working as
+    a bootstrap so you can always get in, even with an empty database. Codes
+    created here are the comfortable path: they can be revoked, limited to a
+    number of uses, and you can see who signed up with which one.
+    """
+    __tablename__ = "invite_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True, nullable=False)
+    label = Column(String)                          # "für Max", "Reddit-Post" …
+    max_uses = Column(Integer)                       # NULL = unbegrenzt
+    uses = Column(Integer, default=0, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    created_by = Column(Integer, ForeignKey("users.id"), index=True)
+
+
 class ApiCache(Base):
     __tablename__ = "api_cache"
 
@@ -110,6 +137,65 @@ class SaleTemplatePhoto(Base):
     label = Column(String)                        # optional caption ("Versandinfo")
     position = Column(Integer, default=99)        # insertion slot in the photo order
     created_at = Column(DateTime, server_default=func.now())
+
+
+class CollectionSnapshot(Base):
+    """Daily snapshot of a user's collection value — powers the value-history
+    chart (portfolio view). One row per user per day, upserted whenever stats
+    are computed, so the history builds itself with zero extra infrastructure."""
+    __tablename__ = "collection_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    day = Column(String, index=True, nullable=False)     # "YYYY-MM-DD" (UTC)
+    total_cards = Column(Integer, default=0)
+    total_unique = Column(Integer, default=0)
+    total_value_eur = Column(Float, default=0.0)
+    total_value_usd = Column(Float, default=0.0)
+    taken_at = Column(DateTime, server_default=func.now())
+
+
+class MarketplaceConnection(Base):
+    """A user's linked marketplace account (eBay OAuth, Whatnot API token, …).
+
+    One row per (user, platform). Secrets are stored server-side only and never
+    returned through the API — the frontend only sees status/username.
+    """
+    __tablename__ = "marketplace_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    platform = Column(String, nullable=False)      # "ebay" | "whatnot"
+    # eBay: long-lived refresh token from the user-consent OAuth flow.
+    # Whatnot: the seller's API token from the Seller Hub.
+    refresh_token = Column(Text)
+    access_token = Column(Text)                     # short-lived, cached
+    access_token_expires_at = Column(DateTime)
+    external_username = Column(String)              # display only
+    status = Column(String, default="connected")    # connected | error | revoked
+    connected_at = Column(DateTime, server_default=func.now())
+
+
+class MarketplaceListing(Base):
+    """A card listed on an external marketplace — the cross-listing ledger.
+
+    Tracks where each card is live so a sale on one platform can end the
+    listings on the others (auto-delist).
+    """
+    __tablename__ = "marketplace_listings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    card_id = Column(Integer, ForeignKey("cards.id"), index=True, nullable=False)
+    platform = Column(String, nullable=False)       # "ebay" | "whatnot" | "vinted"
+    external_id = Column(String, index=True)        # listing/offer ID on the platform
+    sku = Column(String, index=True)                # our SKU (cardvault-<card_id>)
+    status = Column(String, default="active")       # active | sold | ended | error
+    price = Column(Float)
+    currency = Column(String, default="EUR")
+    listed_at = Column(DateTime, server_default=func.now())
+    ended_at = Column(DateTime)
+    note = Column(Text)
 
 
 class CardHashIndex(Base):

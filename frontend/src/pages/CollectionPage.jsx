@@ -178,8 +178,8 @@ export default function CollectionPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Collection</h1>
-          <p className="text-gray-400 text-sm">
+          <h1 className="page-title">Sammlung</h1>
+          <p className="text-ink-3 text-sm">
             {total} Karte{total !== 1 ? 'n' : ''} · Sammlungswert{' '}
             <span className="text-pokemon-yellow font-semibold">
               {totalValueEur.toFixed(2).replace('.', ',')} €
@@ -201,7 +201,7 @@ export default function CollectionPage() {
               Preise
             </button>
           ) : (
-            <Link to="/pricing" className="btn-ghost flex items-center gap-1.5 text-sm text-gray-500" title="Pro: Preise aktualisieren">
+            <Link to="/pricing" className="btn-ghost flex items-center gap-1.5 text-sm text-ink-3" title="Pro: Preise aktualisieren">
               <TrendingUp className="w-4 h-4" />
             </Link>
           )}
@@ -212,18 +212,18 @@ export default function CollectionPage() {
             <CheckSquare className="w-4 h-4" /> {selectMode ? 'Fertig' : 'Auswählen'}
           </button>
           <button onClick={() => { setEbayCardIds(null); setShowEbay(true) }} className="btn-primary flex items-center gap-2">
-            <ShoppingBag className="w-4 h-4" /> Sell on eBay
+            <ShoppingBag className="w-4 h-4" /> Verkaufen
           </button>
           <div className="relative group">
             <button className="btn-secondary flex items-center gap-2">
               <Download className="w-4 h-4" /> Export
             </button>
-            <div className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10 min-w-[120px]">
+            <div className="absolute right-0 top-full mt-1 hidden group-hover:block bg-surface-2 border border-line rounded-xl shadow-card z-10 min-w-[120px] overflow-hidden">
               {['csv', 'pdf', 'json'].map((fmt) => (
                 <button
                   key={fmt}
                   onClick={() => handleExport(fmt)}
-                  className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg"
+                  className="block w-full text-left px-3 py-2 text-sm hover:bg-surface-2"
                 >
                   {fmt.toUpperCase()}
                 </button>
@@ -236,13 +236,13 @@ export default function CollectionPage() {
       {/* Plan limit banner (free users near/at the cap) */}
       {remaining != null && remaining <= 10 && (
         <div className={`panel flex items-center justify-between gap-3 ${
-          remaining <= 0 ? 'border-pokemon-red/50' : 'border-pokemon-yellow/40'
+          remaining <= 0 ? 'border-pokemon-red/50' : 'border-accent/60'
         }`}>
-          <p className="text-sm text-gray-300">
+          <p className="text-sm text-ink-2">
             {remaining <= 0
               ? `Du hast dein Limit von ${cardLimit} Karten erreicht.`
               : `Nur noch ${remaining} von ${cardLimit} Karten frei.`}{' '}
-            <span className="text-gray-400">Upgrade auf Pro für unbegrenzte Karten.</span>
+            <span className="text-ink-3">Mit Pro sind es unbegrenzt viele.</span>
           </p>
           <Link to="/pricing" className="btn-primary shrink-0 flex items-center gap-1.5 text-sm">
             <Crown className="w-4 h-4" /> Upgrade
@@ -252,10 +252,10 @@ export default function CollectionPage() {
 
       {/* Selection toolbar */}
       {selectMode && (
-        <div className="panel sticky top-2 z-20 flex flex-wrap items-center gap-2 border-pokemon-yellow/40">
+        <div className="panel sticky top-2 z-20 flex flex-wrap items-center gap-2 border-accent/60">
           <span className="text-sm font-semibold">{selectedIds.length} ausgewählt</span>
-          <button onClick={selectAll} className="text-xs text-gray-400 hover:text-white">Alle</button>
-          <button onClick={() => setSelectedIds([])} className="text-xs text-gray-400 hover:text-white">Keine</button>
+          <button onClick={selectAll} className="text-xs text-ink-3 hover:text-ink">Alle</button>
+          <button onClick={() => setSelectedIds([])} className="text-xs text-ink-3 hover:text-ink">Keine</button>
           <div className="flex-1" />
           <button onClick={() => bulkSetTrade(true)} disabled={!selectedIds.length} className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-40">
             <Tag className="w-4 h-4" /> Zum Verkauf
@@ -275,10 +275,10 @@ export default function CollectionPage() {
           <button onClick={exportSelected} disabled={!selectedIds.length} className="btn-primary text-sm flex items-center gap-1.5 disabled:opacity-40">
             <ShoppingBag className="w-4 h-4" /> eBay ({selectedIds.length})
           </button>
-          <button onClick={bulkDelete} disabled={!selectedIds.length} className="text-sm text-pokemon-red hover:text-red-400 flex items-center gap-1.5 disabled:opacity-40 px-2">
+          <button onClick={bulkDelete} disabled={!selectedIds.length} className="text-sm text-pokemon-red hover:text-red-600 flex items-center gap-1.5 disabled:opacity-40 px-2">
             <Trash2 className="w-4 h-4" /> Löschen
           </button>
-          <button onClick={clearSelection} className="text-gray-500 hover:text-white px-1"><X className="w-4 h-4" /></button>
+          <button onClick={clearSelection} className="text-ink-3 hover:text-ink px-1"><X className="w-4 h-4" /></button>
         </div>
       )}
 
@@ -289,18 +289,18 @@ export default function CollectionPage() {
         </div>
         {ownedSets.length > 1 && (
           <select value={setFilter} onChange={(e) => setSetFilter(e.target.value)} className="input flex-1 min-w-[140px] sm:max-w-[12rem]">
-            <option value="">All Sets</option>
+            <option value="">Alle Sets</option>
             {ownedSets.map((s) => (
               <option key={s.code || s.name} value={s.name}>{s.name}</option>
             ))}
           </select>
         )}
         <select value={rarity} onChange={(e) => setRarity(e.target.value)} className="input flex-1 min-w-[140px] sm:max-w-[11rem]">
-          <option value="">All Rarities</option>
+          <option value="">Alle Seltenheiten</option>
           {RARITIES.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         <select value={condition} onChange={(e) => setCondition(e.target.value)} className="input flex-1 min-w-[140px] sm:max-w-[11rem]">
-          <option value="">All Conditions</option>
+          <option value="">Alle Zustände</option>
           {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <select
@@ -312,19 +312,17 @@ export default function CollectionPage() {
           }}
           className="input flex-1 min-w-[140px] sm:max-w-[11rem]"
         >
-          {SORTS.map(({ value, label }) => (
-            <>
-              <option key={`${value}:desc`} value={`${value}:desc`}>{label} ↓</option>
-              <option key={`${value}:asc`} value={`${value}:asc`}>{label} ↑</option>
-            </>
-          ))}
+          {SORTS.flatMap(({ value, label }) => [
+            <option key={`${value}:desc`} value={`${value}:desc`}>{label} ↓</option>,
+            <option key={`${value}:asc`} value={`${value}:asc`}>{label} ↑</option>,
+          ])}
         </select>
         <button
           onClick={() => setForTradeOnly((v) => !v)}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors ${
             forTradeOnly
-              ? 'bg-blue-900/40 border-blue-500/60 text-blue-300'
-              : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+              ? 'bg-blue-900/40 border-blue-500/60 text-blue-700'
+              : 'border-line text-ink-3 hover:border-ink-4 hover:text-ink'
           }`}
         >
           <Tag className="w-4 h-4" /> Zum Verkauf
@@ -333,8 +331,8 @@ export default function CollectionPage() {
           onClick={() => setFoilOnly((v) => !v)}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors ${
             foilOnly
-              ? 'bg-pokemon-yellow/20 border-pokemon-yellow/60 text-pokemon-yellow'
-              : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+              ? 'bg-accent/20 border-accent text-pokemon-yellow'
+              : 'border-line text-ink-3 hover:border-ink-4 hover:text-ink'
           }`}
         >
           <Sparkles className="w-4 h-4" /> Foil
@@ -342,14 +340,18 @@ export default function CollectionPage() {
       </div>
 
       {loading && !cards.length ? (
-        <div className="flex justify-center py-20 text-gray-500">Loading…</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          {Array.from({ length: 12 }, (_, i) => (
+            <div key={i} className="skeleton aspect-[2.5/3.8]" />
+          ))}
+        </div>
       ) : isEmptyCollection ? (
         <div className="flex flex-col items-center justify-center text-center py-20 px-4">
-          <div className="w-16 h-16 rounded-2xl bg-pokemon-yellow/15 flex items-center justify-center mb-4">
+          <div className="w-16 h-16 rounded-2xl bg-accent-soft flex items-center justify-center mb-4">
             <ScanLine className="w-8 h-8 text-pokemon-yellow" />
           </div>
           <h2 className="text-xl font-bold">Deine Sammlung ist noch leer</h2>
-          <p className="text-gray-400 text-sm mt-1 max-w-sm">
+          <p className="text-ink-3 text-sm mt-1 max-w-sm">
             Scanne deine erste Karte — per Foto-Upload oder direkt mit der Kamera.
             Wir erkennen sie automatisch und holen den aktuellen Wert.
           </p>
@@ -367,7 +369,7 @@ export default function CollectionPage() {
           />
           {cards.length < total && (
             <div className="flex flex-col items-center gap-1 pt-2">
-              <p className="text-xs text-gray-500">{cards.length} von {total} Karten geladen</p>
+              <p className="text-xs text-ink-3">{cards.length} von {total} Karten geladen</p>
               <button
                 onClick={loadMoreCards}
                 disabled={loadingMore}

@@ -1,12 +1,122 @@
-from fastapi import APIRouter, Depends
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Card, User
-from services import auth_service
+from models import Card, CollectionSnapshot, User
+from services import auth_service, tcg_api_service
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
+
+
+def _upsert_snapshot(
+    db: Session, user_id: int,
+    total_cards: int, total_unique: int,
+    total_value_eur: float, total_value_usd: float,
+) -> None:
+    """Record (or update) today's collection snapshot. Called from get_stats,
+    so the value history builds itself whenever the user opens the app."""
+    day = datetime.utcnow().strftime("%Y-%m-%d")
+    snap = (
+        db.query(CollectionSnapshot)
+        .filter(CollectionSnapshot.user_id == user_id, CollectionSnapshot.day == day)
+        .first()
+    )
+    if snap is None:
+        snap = CollectionSnapshot(user_id=user_id, day=day)
+        db.add(snap)
+    snap.total_cards = total_cards
+    snap.total_unique = total_unique
+    snap.total_value_eur = round(total_value_eur, 2)
+    snap.total_value_usd = round(total_value_usd, 2)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+@router.get("/history")
+def get_value_history(
+    days: int = Query(90, ge=7, le=730),
+    db: Session = Depends(get_db),
+    user: User = Depends(auth_service.get_current_user),
+):
+    """Daily collection-value snapshots for the portfolio chart."""
+    since = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    rows = (
+        db.query(CollectionSnapshot)
+        .filter(CollectionSnapshot.user_id == user.id, CollectionSnapshot.day >= since)
+        .order_by(CollectionSnapshot.day.asc())
+        .all()
+    )
+    return {
+        "history": [
+            {
+                "day": r.day,
+                "total_cards": r.total_cards,
+                "total_value_eur": r.total_value_eur,
+                "total_value_usd": r.total_value_usd,
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.get("/sets-progress")
+async def get_sets_progress(
+    db: Session = Depends(get_db),
+    user: User = Depends(auth_service.get_current_user),
+):
+    """Set-completion progress: owned unique cards vs. the set's printed total.
+
+    Owned cards are grouped by the TCG set id embedded in ``tcg_card_id``
+    (e.g. "sv4pt5-18" → set "sv4pt5") — robust against renamed/localized set
+    names. Cardmarket-only cards (id "cm-…") can't be attributed and are
+    skipped.
+    """
+    rows = (
+        db.query(Card.tcg_card_id)
+        .filter(Card.user_id == user.id, Card.tcg_card_id.isnot(None))
+        .distinct()
+        .all()
+    )
+    owned_by_set: dict[str, int] = {}
+    for (tcg_id,) in rows:
+        if not tcg_id or tcg_id.startswith("cm-") or "-" not in tcg_id:
+            continue
+        set_id = tcg_id.rsplit("-", 1)[0]
+        owned_by_set[set_id] = owned_by_set.get(set_id, 0) + 1
+
+    if not owned_by_set:
+        return {"sets": []}
+
+    try:
+        all_sets = await tcg_api_service.list_sets_full(db)
+    except Exception:
+        return {"sets": []}
+
+    out = []
+    for s in all_sets:
+        sid = s.get("id")
+        if sid not in owned_by_set:
+            continue
+        total = s.get("printedTotal") or s.get("total") or 0
+        owned = owned_by_set[sid]
+        images = s.get("images") or {}
+        out.append({
+            "set_id": sid,
+            "name": s.get("name"),
+            "series": s.get("series"),
+            "symbol": images.get("symbol"),
+            "logo": images.get("logo"),
+            "owned": owned,
+            "total": total,
+            "percent": round(min(owned / total, 1.0) * 100, 1) if total else None,
+        })
+    out.sort(key=lambda x: (-(x["percent"] or 0), x["name"] or ""))
+    return {"sets": out}
 
 
 @router.get("")
@@ -37,6 +147,9 @@ def get_stats(
         ((c.market_price_eur or c.price_trend_eur or 0) * c.quantity) for c in cards
     )
     for_trade_count = sum(1 for c in cards if c.for_trade)
+
+    # Side effect: record today's snapshot for the value-history chart.
+    _upsert_snapshot(db, user.id, total_cards, total_unique, total_value_eur, total_value)
 
     rarity_order = [
         "Amazing Rare", "Secret Rare", "Ultra Rare", "Hyper Rare",

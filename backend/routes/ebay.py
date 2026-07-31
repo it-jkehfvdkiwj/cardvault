@@ -26,16 +26,14 @@ class ExportRequest(BaseModel):
     options: Optional[dict] = None
 
 
-class ListRequest(BaseModel):
-    card_id: int
-    options: Optional[dict] = None
-
-
 @router.get("/status")
-def ebay_status(user: User = Depends(auth_service.get_current_user)):
+def ebay_status(
+    db: Session = Depends(get_db),
+    user: User = Depends(auth_service.get_current_user),
+):
     """Report eBay capabilities + the default export options for the UI."""
     return {
-        **ebay_api_service.status(),
+        **ebay_api_service.status(db, user.id),
         "default_options": ebay_service.default_options(),
         "sites": list(ebay_service.SITES.keys()),
     }
@@ -80,23 +78,4 @@ def ebay_export_csv(
     )
 
 
-@router.post("/list")
-def ebay_list(
-    payload: ListRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(auth_service.get_current_user),
-):
-    """Create a single live eBay listing (scaffold — see ebay_api_service)."""
-    card = (
-        db.query(Card)
-        .filter(Card.id == payload.card_id, Card.user_id == user.id)
-        .first()
-    )
-    if not card:
-        raise HTTPException(status_code=404, detail="Card not found")
-    result = ebay_api_service.create_listing(card, payload.options)
-    if not result.get("ok"):
-        # 501 for not-implemented, 400 for not-configured.
-        code = 501 if result.get("status") == "not_implemented" else 400
-        raise HTTPException(status_code=code, detail=result.get("detail"))
-    return result
+# Live listing / account linking now lives in routes/market.py (/api/market/…).

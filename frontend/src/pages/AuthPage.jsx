@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Vault, Loader, Mail, Lock, User as UserIcon } from 'lucide-react'
+import { Vault, Loader, Mail, Lock, User as UserIcon, KeyRound, Lock as LockIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
+import { authApi } from '../api/client'
 
 export default function AuthPage() {
   const { login, register } = useAuth()
@@ -13,7 +14,17 @@ export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [busy, setBusy] = useState(false)
+  // Whether registration is currently invite-only. Asked once on mount so the
+  // form can say so upfront instead of rejecting a filled-in form with a 403.
+  const [privateBeta, setPrivateBeta] = useState(false)
+
+  useEffect(() => {
+    authApi.config()
+      .then(({ data }) => setPrivateBeta(Boolean(data.private_beta)))
+      .catch(() => {})
+  }, [])
 
   const isRegister = mode === 'register'
 
@@ -23,7 +34,7 @@ export default function AuthPage() {
     setBusy(true)
     try {
       if (isRegister) {
-        await register(email, password, displayName)
+        await register(email, password, displayName, inviteCode)
         toast.success('Konto erstellt — willkommen!')
       } else {
         await login(email, password)
@@ -38,25 +49,41 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <div className="flex items-center justify-center gap-2 mb-6">
-          <Vault className="text-pokemon-yellow w-8 h-8" />
-          <span className="font-bold text-2xl tracking-wide text-pokemon-yellow">CardVault</span>
+        <div className="flex items-center justify-center gap-2.5 mb-7">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-300 to-amber-500 flex items-center justify-center shadow-glow">
+            <Vault className="w-5 h-5 text-ink" strokeWidth={2.5} />
+          </div>
+          <span className="font-bold text-2xl tracking-tight font-display">
+            CardVault
+          </span>
         </div>
 
-        <div className="panel">
-          <div className="flex mb-5 rounded-lg bg-gray-800/60 p-1 text-sm">
+        <div className="panel !p-5">
+          <div className="flex mb-5 rounded-xl bg-surface-2 border border-line p-1 text-sm">
             {['login', 'register'].map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                className={`flex-1 py-1.5 rounded-md font-medium transition-colors ${
-                  mode === m ? 'bg-pokemon-red text-white' : 'text-gray-400 hover:text-white'
+                className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors ${
+                  mode === m
+                    ? 'bg-accent text-ink'
+                    : 'text-ink-3 hover:text-ink'
                 }`}
               >
                 {m === 'login' ? 'Anmelden' : 'Registrieren'}
               </button>
             ))}
           </div>
+
+          {privateBeta && isRegister && (
+            <div className="flex items-start gap-2 text-xs text-ink-3 bg-surface-2 border border-line rounded-lg px-3 py-2 mb-4">
+              <LockIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-pokemon-yellow" />
+              <span>
+                CardVault ist gerade in einer <strong className="text-ink">geschlossenen
+                Testphase</strong>. Zum Registrieren brauchst du einen Einladungscode.
+              </span>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-3">
             {isRegister && (
@@ -84,7 +111,16 @@ export default function AuthPage() {
               />
             </Field>
             {isRegister && (
-              <p className="text-xs text-gray-500">Mindestens 8 Zeichen.</p>
+              <p className="text-xs text-ink-3">Mindestens 8 Zeichen.</p>
+            )}
+            {isRegister && privateBeta && (
+              <Field icon={KeyRound}>
+                <input
+                  className="input pl-9" placeholder="Einladungscode" required
+                  value={inviteCode} onChange={(e) => setInviteCode(e.target.value)}
+                  autoComplete="off" spellCheck={false}
+                />
+              </Field>
             )}
 
             <button type="submit" disabled={busy} className="btn-primary w-full flex items-center justify-center gap-2">
@@ -94,28 +130,28 @@ export default function AuthPage() {
           </form>
 
           {!isRegister && (
-            <p className="text-center text-xs text-gray-500 mt-3">
-              <Link to="/forgot-password" className="hover:text-gray-300">Passwort vergessen?</Link>
+            <p className="text-center text-xs text-ink-3 mt-3">
+              <Link to="/forgot-password" className="hover:text-ink-2">Passwort vergessen?</Link>
             </p>
           )}
         </div>
 
-        <p className="text-center text-xs text-gray-600 mt-4">
+        <p className="text-center text-xs text-ink-4 mt-4">
           {isRegister ? 'Schon ein Konto?' : 'Noch kein Konto?'}{' '}
           <button
             onClick={() => setMode(isRegister ? 'login' : 'register')}
-            className="text-pokemon-yellow hover:underline"
+            className="text-accent-ink hover:underline"
           >
             {isRegister ? 'Jetzt anmelden' : 'Jetzt registrieren'}
           </button>
         </p>
-        <p className="text-center text-xs text-gray-600 mt-2">
-          <Link to="/" className="hover:text-gray-400">← Zurück zur Startseite</Link>
+        <p className="text-center text-xs text-ink-4 mt-2">
+          <Link to="/" className="hover:text-ink-2">← Zurück zur Startseite</Link>
         </p>
-        <p className="text-center text-xs text-gray-700 mt-4 space-x-3">
-          <Link to="/impressum" className="hover:text-gray-400">Impressum</Link>
-          <Link to="/datenschutz" className="hover:text-gray-400">Datenschutz</Link>
-          <Link to="/agb" className="hover:text-gray-400">AGB</Link>
+        <p className="text-center text-xs text-ink-4 mt-4 space-x-3">
+          <Link to="/impressum" className="hover:text-ink-2">Impressum</Link>
+          <Link to="/datenschutz" className="hover:text-ink-2">Datenschutz</Link>
+          <Link to="/agb" className="hover:text-ink-2">AGB</Link>
         </p>
       </div>
     </div>
@@ -125,7 +161,7 @@ export default function AuthPage() {
 function Field({ icon: Icon, children }) {
   return (
     <div className="relative">
-      <Icon className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+      <Icon className="w-4 h-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
       {children}
     </div>
   )

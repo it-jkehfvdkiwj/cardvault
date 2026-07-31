@@ -1,0 +1,33 @@
+# Local development. Bind-mounts the source so code edits are picked up without
+# rebuilding the image.
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# Deliberately separate from docker-compose.yml: that bind mount shadows /app in
+# the image, which in production would also hide the compiled React build.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '8000:8000'
+    volumes:
+      - ./backend:/app/backend
+    environment:
+      - APP_ENV=development
+      - DATABASE_URL=sqlite:///./cardvault.db
+      - UPLOAD_DIR=uploads
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - JWT_SECRET=dev-insecure-secret-change-me-0123456789-abcdefghij
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      - FREE_LAUNCH=true
+      - ALLOW_DEMO_BILLING=true
+      - RATE_LIMIT_ENABLED=false
+      - POKEMON_TCG_API_KEY=${POKEMON_TCG_API_KEY:-}
+    # Reload on change; --proxy-headers keeps behaviour identical to production.
+    command: >
+      /bin/sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+      --proxy-headers --forwarded-allow-ips='*'"
+    restart: unless-stopped

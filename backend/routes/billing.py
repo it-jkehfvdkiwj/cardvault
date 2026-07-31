@@ -8,6 +8,21 @@ from services import auth_service, billing_service, plan_service
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 
+@router.get("/public-plans")
+def public_plans():
+    """Plan names, prices and highlights for the landing page.
+
+    Deliberately unauthenticated: the marketing page has to show the same
+    numbers the app enforces, and it renders for visitors who have no account
+    yet. Calling the authenticated /plans endpoint there would 401 on every
+    single visit and trip the frontend's session-expired handling.
+    """
+    return {
+        "plans": list(plan_service.PLANS.values()),
+        "free_launch": plan_service.free_launch(),
+    }
+
+
 @router.get("/plans")
 def get_plans(
     user: User = Depends(auth_service.get_current_user),
@@ -18,6 +33,7 @@ def get_plans(
         "current_plan": user.plan or "free",
         "stripe_enabled": billing_service.stripe_enabled(),
         "demo_enabled": billing_service.demo_enabled(),
+        "free_launch": plan_service.free_launch(),
         "usage": plan_service.usage(db, user),
     }
 

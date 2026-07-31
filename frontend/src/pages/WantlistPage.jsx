@@ -95,7 +95,7 @@ export default function WantlistPage() {
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Star className="text-pokemon-yellow w-6 h-6" /> Wantlist
           </h1>
-          <p className="text-gray-400 text-sm mt-1">{items.length} card{items.length !== 1 ? 's' : ''} wanted</p>
+          <p className="text-ink-3 text-sm mt-1">{items.length} card{items.length !== 1 ? 's' : ''} wanted</p>
         </div>
         <div className="flex gap-2">
           {items.length > 0 && (
@@ -136,17 +136,17 @@ export default function WantlistPage() {
           {addResults.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {addResults.slice(0, 9).map((card) => (
-                <div key={card.id} className="bg-gray-800 rounded-lg p-2 flex gap-2">
+                <div key={card.id} className="bg-surface-2 rounded-lg p-2 flex gap-2">
                   {card.images?.small && (
                     <img src={card.images.small} alt={card.name} className="w-12 h-auto rounded object-cover" />
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold truncate">{card.name}</p>
-                    <p className="text-xs text-gray-500 truncate">{card.set?.name}</p>
+                    <p className="text-xs text-ink-3 truncate">{card.set?.name}</p>
                     <RarityBadge rarity={card.rarity} />
                     <button
                       onClick={() => handleAdd(card)}
-                      className="mt-1 text-xs bg-pokemon-yellow/20 text-pokemon-yellow hover:bg-pokemon-yellow/40 px-2 py-0.5 rounded transition-colors"
+                      className="mt-1 text-xs bg-accent/20 text-pokemon-yellow hover:bg-accent/40 px-2 py-0.5 rounded transition-colors"
                     >
                       + Want
                     </button>
@@ -163,10 +163,14 @@ export default function WantlistPage() {
 
       {/* List */}
       {loading ? (
-        <div className="text-center text-gray-500 py-12">Loading…</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 py-2">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="skeleton aspect-[2.5/3.8]" />
+          ))}
+        </div>
       ) : items.length === 0 ? (
-        <div className="text-center text-gray-500 py-12">
-          <Star className="w-10 h-10 mx-auto mb-2 text-gray-700" />
+        <div className="text-center text-ink-3 py-12">
+          <Star className="w-10 h-10 mx-auto mb-2 text-ink-4" />
           <p>Your wantlist is empty</p>
         </div>
       ) : (
@@ -179,7 +183,7 @@ export default function WantlistPage() {
               {item.image_url ? (
                 <img src={item.image_url} alt={item.name} className="w-12 h-auto rounded" />
               ) : (
-                <div className="w-12 h-16 bg-gray-800 rounded flex items-center justify-center text-2xl">🃏</div>
+                <div className="w-12 h-16 bg-surface-2 rounded flex items-center justify-center text-2xl">🃏</div>
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -187,21 +191,21 @@ export default function WantlistPage() {
                   {item.in_collection ? (
                     <Link
                       to={`/card/${item.owned_card_id}`}
-                      className="flex items-center gap-1 text-green-400 text-xs font-semibold hover:text-green-300"
+                      className="flex items-center gap-1 text-green-700 text-xs font-semibold hover:text-green-800"
                     >
                       <CheckCircle className="w-3 h-3" /> In Sammlung
                     </Link>
                   ) : (
                     <Link
                       to={`/upload`}
-                      className="flex items-center gap-1 text-gray-500 text-xs hover:text-pokemon-yellow"
+                      className="flex items-center gap-1 text-ink-3 text-xs hover:text-pokemon-yellow"
                       title="Karte scannen"
                     >
                       <ExternalLink className="w-3 h-3" /> Scannen
                     </Link>
                   )}
                 </div>
-                <p className="text-sm text-gray-400">{item.set_name}</p>
+                <p className="text-sm text-ink-3">{item.set_name}</p>
                 <RarityBadge rarity={item.rarity} />
               </div>
               {prices[item.tcg_card_id] != null && (
@@ -211,7 +215,7 @@ export default function WantlistPage() {
               )}
               <button
                 onClick={() => handleRemove(item.id, item.name)}
-                className="text-gray-600 hover:text-red-400 transition-colors shrink-0"
+                className="text-ink-4 hover:text-red-600 transition-colors shrink-0"
               >
                 <Trash2 className="w-4 h-4" />
               </button>

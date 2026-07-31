@@ -37,9 +37,15 @@ def stripe_enabled() -> bool:
 
 
 def demo_enabled() -> bool:
-    # Defaults ON so the flow is usable immediately; set ALLOW_DEMO_BILLING=false
-    # once real Stripe billing is configured.
-    return os.getenv("ALLOW_DEMO_BILLING", "true").lower() == "true"
+    """Self-service "upgrade myself to Pro without paying" button.
+
+    Defaults to **off**. It writes ``plan = "pro"`` straight into the database,
+    so leaving it on in production means any visitor can permanently grant
+    themselves a paid account — and that row survives the switch to real
+    billing. Use ``FREE_LAUNCH`` (see plan_service) to run a free launch phase;
+    this switch is only for poking at the Stripe flow locally.
+    """
+    return os.getenv("ALLOW_DEMO_BILLING", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _base_url() -> str:

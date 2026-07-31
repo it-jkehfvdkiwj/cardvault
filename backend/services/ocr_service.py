@@ -21,7 +21,9 @@ fails (early exit).
 
 import os
 import re
+import threading
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2
@@ -165,7 +167,9 @@ def _vote(texts: list[str]) -> tuple[str | None, str | None, str | None]:
     return best_code, best_number, best_total
 
 
-def _cheap_bottom_texts(cv_img: np.ndarray) -> list[str]:
+def _cheap_bottom_texts(
+    cv_img: np.ndarray, stop: threading.Event | None = None
+) -> list[str]:
     """Cheap OCR of the full bottom strip, escalating only as needed.
 
     The collector number + printed total ("052/197") is the reliable, easy-to-read
@@ -182,7 +186,7 @@ def _cheap_bottom_texts(cv_img: np.ndarray) -> list[str]:
 
     texts = [_ocr(otsu, lang="eng", psm=6)]
     _, n, t = _vote(texts)
-    if n and t:
+    if (n and t) or (stop and stop.is_set()):
         return texts
 
     # Digit-focused pass: whitelisting digits+slash reads "NNN/TTT" far more
@@ -190,7 +194,7 @@ def _cheap_bottom_texts(cv_img: np.ndarray) -> list[str]:
     texts.append(_ocr(otsu, lang="eng", psm=6, whitelist=_NUM_WHITELIST))
     texts.append(_ocr(otsu, lang="eng", psm=11))
     _, n, t = _vote(texts)
-    if n and t:
+    if (n and t) or (stop and stop.is_set()):
         return texts
 
     texts.append(_ocr(gray, lang="eng", psm=11, whitelist=_NUM_WHITELIST))
@@ -243,7 +247,9 @@ def _fanout_bottom_texts(cv_img: np.ndarray) -> list[str]:
     return texts
 
 
-def _number_focus_texts(cv_img: np.ndarray) -> list[str]:
+def _number_focus_texts(
+    cv_img: np.ndarray, stop: threading.Event | None = None
+) -> list[str]:
     """Targeted recovery of the collector number from the bottom-left corner.
 
     On modern cards the small italic "NNN/TTT" sits on the light card border and a
@@ -276,6 +282,8 @@ def _number_focus_texts(cv_img: np.ndarray) -> list[str]:
         )
         for im in (bh_bin, adapt):
             for psm in (11, 7):
+                if stop and stop.is_set():
+                    return texts
                 texts.append(_ocr(im, lang="eng", psm=psm, whitelist=_NUM_WHITELIST))
         _, n, t = _vote(texts)
         if n and t:
@@ -313,13 +321,28 @@ def _resolve_bottom(
     return (code or None), (number or None), (total or None)
 
 
+def _probe_orientation(
+    img: np.ndarray, stop: threading.Event
+) -> tuple[list[str], str | None, str | None, str | None]:
+    """Full cheap+focused probe of one orientation; obeys the shared stop flag."""
+    texts = list(_cheap_bottom_texts(img, stop))
+    c, n, t = _vote(texts)
+    if not n and not stop.is_set():
+        texts += _number_focus_texts(img, stop)
+        c, n, t = _vote(texts)
+    return texts, c, n, t
+
+
 def read_card_bottom(
     cv_img: np.ndarray,
 ) -> tuple[str | None, str | None, str | None, np.ndarray]:
     """
     Orientation-robust bottom read. The auto-crop may leave a card upside-down,
-    so we cheaply probe both orientations first, then run the expensive corner
-    fan-out at most **once**, on the more promising orientation. Returns
+    so we probe both orientations **in parallel threads** (Tesseract runs as a
+    subprocess, so this is true parallelism) and share a stop flag: the moment
+    one orientation reads a collector number, the other aborts between OCR
+    calls. This roughly halves worst-case latency versus the old sequential
+    probe without meaningfully increasing work in the common case. Returns
     ``(code, number, total, correctly_oriented_image)`` — the returned image is
     flipped to the orientation that produced a hit, so downstream name OCR and
     perceptual hashing operate on an upright card.
@@ -328,22 +351,21 @@ def read_card_bottom(
         return None, None, None, cv_img
 
     flipped = cv2.rotate(cv_img, cv2.ROTATE_180)
+    stop = threading.Event()
 
-    # For each orientation: a cheap full-strip read (often one OCR call), then a
-    # focused bottom-left recovery for the small italic collector number when the
-    # strip didn't yield one. A readable number is enough — the card is identified
-    # downstream via number(+total); the flaky 3-letter set code isn't required.
-    up_texts: list[str] = []
-    for img in (cv_img, flipped):
-        texts = list(_cheap_bottom_texts(img))
-        c, n, t = _vote(texts)
-        if not n:
-            texts += _number_focus_texts(img)
-            c, n, t = _vote(texts)
-        if img is cv_img:
-            up_texts = texts
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fut_up = ex.submit(_probe_orientation, cv_img, stop)
+        fut_down = ex.submit(_probe_orientation, flipped, stop)
+
+        up_texts, c, n, t = fut_up.result()
         if n:
-            return c, n, t, img
+            stop.set()          # abort the flipped probe between calls
+            fut_down.result()   # join (fast — it exits at the next check)
+            return c, n, t, cv_img
+
+        _, c2, n2, t2 = fut_down.result()
+        if n2:
+            return c2, n2, t2, flipped
 
     # Last resort: expensive corner fan-out on the upright orientation.
     c, n, t = _resolve_bottom(up_texts, cv_img)

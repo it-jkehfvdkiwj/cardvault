@@ -1,3 +1,13 @@
+# Render blueprint for CardVault.
+#
+# Deploy: push to GitHub → render.com → New → Blueprint → pick this repo.
+# Everything below is created automatically except the values marked
+# `sync: false` — Render prompts for those once, so they stay out of git.
+#
+# Free-plan caveats worth knowing before launch: the web service sleeps after
+# ~15 min idle (the next request then takes ~30 s), and free Postgres instances
+# expire after 30 days. For a real launch put both on the Starter plan.
+
 databases:
   - name: cardvault-db
     plan: free
@@ -11,17 +21,58 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
+    region: frankfurt          # closest region for German users
+    healthCheckPath: /health
     envVars:
+      # ── Security (required) ────────────────────────────────────────────────
+      - key: APP_ENV
+        value: production
       - key: JWT_SECRET
-        generateValue: true
-      # Pulled automatically from the managed Postgres above.
+        generateValue: true    # long random value, generated once by Render
+      - key: ADMIN_EMAILS
+        value: quirin06@mail.de
+
+      # ── Database ───────────────────────────────────────────────────────────
       - key: DATABASE_URL
         fromDatabase:
           name: cardvault-db
           property: connectionString
+
+      # ── URLs ───────────────────────────────────────────────────────────────
+      # Fill both in after the first deploy, e.g. https://cardvault.onrender.com
+      # or your own domain. CORS_ORIGINS must match exactly: scheme + host, no
+      # trailing slash.
+      - key: APP_BASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+
+      # ── Geschlossene Testphase ─────────────────────────────────────────────
+      # Registrierung nur mit Einladungscode, Suchmaschinen komplett ausgesperrt.
+      # Auf "false" stellen, wenn du öffentlich gehst (dann aber vorher
+      # Impressum + Datenschutzerklärung ausfüllen!).
+      - key: PRIVATE_BETA
+        value: "true"
+      - key: INVITE_CODES
+        sync: false            # deine Codes, kommagetrennt
+
+      # ── Launch phase ───────────────────────────────────────────────────────
+      # Every Pro feature is free for everyone. Set to "false" once Stripe is live.
+      - key: FREE_LAUNCH
+        value: "true"
+      # The "upgrade myself without paying" button — must stay off in production.
+      - key: ALLOW_DEMO_BILLING
+        value: "false"
+
+      # ── Uploads ────────────────────────────────────────────────────────────
+      # The container filesystem is wiped on every deploy, so sale photos need
+      # object storage to survive (Cloudflare R2 — see DEPLOY.md §5b). Without
+      # the R2 vars photos are stored locally: fine for testing, gone on redeploy.
       - key: UPLOAD_DIR
         value: uploads
-      - key: ALLOW_DEMO_BILLING
-        value: "true"
-      - key: ADMIN_EMAILS
-        value: quirin06@mail.de
+      - key: MAX_UPLOAD_MB
+        value: "25"
+
+      # ── Optional ───────────────────────────────────────────────────────────
+      - key: POKEMON_TCG_API_KEY
+        sync: false

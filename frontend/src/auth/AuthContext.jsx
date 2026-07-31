@@ -32,11 +32,12 @@ export function AuthProvider({ children }) {
     return data.user
   }
 
-  async function register(email, password, displayName) {
+  async function register(email, password, displayName, inviteCode) {
     const { data } = await authApi.register({
       email,
       password,
       display_name: displayName || undefined,
+      invite_code: inviteCode || undefined,
     })
     setToken(data.access_token)
     setUser(data.user)

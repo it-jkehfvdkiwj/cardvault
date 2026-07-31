@@ -5,8 +5,9 @@ import {
   User as UserIcon, Lock, Crown, Trash2, Loader, Share2, Copy, ExternalLink,
   ShoppingBag, ImagePlus, Images,
 } from 'lucide-react'
-import { accountApi, saleApi } from '../api/client'
+import { accountApi, saleApi, setToken } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { isPro as hasProFeatures, isFreeLaunch } from '../lib/plan'
 
 export default function AccountPage() {
   const { user, refreshUser, logout } = useAuth()
@@ -56,7 +57,8 @@ export default function AccountPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isPro = (user?.plan || 'free') === 'pro'
+  const isPro = hasProFeatures(user)
+  const launch = isFreeLaunch(user)
   const usage = user?.usage || {}
 
   async function saveProfile(e) {
@@ -76,9 +78,14 @@ export default function AccountPage() {
     e.preventDefault()
     setSavingPw(true)
     try {
-      await accountApi.changePassword({ current_password: curPw, new_password: newPw })
+      const { data } = await accountApi.changePassword({
+        current_password: curPw, new_password: newPw,
+      })
+      // The server invalidated every token issued before the change (so other
+      // devices are logged out) and handed us a fresh one for this session.
+      if (data?.access_token) setToken(data.access_token)
       setCurPw(''); setNewPw('')
-      toast.success('Passwort geändert')
+      toast.success('Passwort geändert — andere Geräte wurden abgemeldet')
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Änderung fehlgeschlagen')
     }
@@ -110,31 +117,39 @@ export default function AccountPage() {
       <div className="panel space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Crown className={`w-5 h-5 ${isPro ? 'text-pokemon-yellow' : 'text-gray-500'}`} />
-            <span className="font-semibold">{isPro ? 'Pro' : 'Free'} Plan</span>
-            {isPro && user?.subscription_status && (
-              <span className="badge bg-emerald-800 text-emerald-200 text-[10px]">{user.subscription_status}</span>
+            <Crown className={`w-5 h-5 ${isPro ? 'text-pokemon-yellow' : 'text-ink-3'}`} />
+            <span className="font-semibold">
+              {launch ? 'Alle Funktionen frei' : `${isPro ? 'Pro' : 'Free'} Plan`}
+            </span>
+            {!launch && isPro && user?.subscription_status && (
+              <span className="badge bg-emerald-100 text-emerald-800 text-[10px]">{user.subscription_status}</span>
             )}
           </div>
-          <button onClick={() => navigate('/pricing')} className={isPro ? 'btn-secondary' : 'btn-primary'}>
-            {isPro ? 'Plan verwalten' : 'Upgrade'}
+          <button onClick={() => navigate('/pricing')} className="btn-secondary">
+            {launch ? 'Tarife ansehen' : isPro ? 'Plan verwalten' : 'Upgrade'}
           </button>
         </div>
+        {launch && (
+          <p className="text-xs text-ink-3">
+            Während der Launch-Phase sind alle Pro-Funktionen kostenlos freigeschaltet —
+            unbegrenzt Karten, eBay-Export und Bulk-Preisupdate. Kein Abo, keine Zahlungsdaten.
+          </p>
+        )}
         {!isPro && usage.card_limit != null && (
           <div>
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
+            <div className="flex justify-between text-xs text-ink-3 mb-1">
               <span>Karten</span>
               <span>{usage.cards_used} / {usage.card_limit}</span>
             </div>
-            <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
               <div
-                className={`h-full ${pct >= 90 ? 'bg-pokemon-red' : 'bg-pokemon-yellow'}`}
+                className={`h-full ${pct >= 90 ? 'bg-pokemon-red' : 'bg-accent'}`}
                 style={{ width: `${pct}%` }}
               />
             </div>
           </div>
         )}
-        {isPro && <p className="text-sm text-gray-400">Unbegrenzte Sammlung · eBay-Export · CSV/PDF-Export</p>}
+        {isPro && <p className="text-sm text-ink-3">Unbegrenzte Sammlung · eBay-Export · CSV/PDF-Export</p>}
       </div>
 
       {/* Public sharing */}
@@ -147,7 +162,7 @@ export default function AccountPage() {
             Öffentlich
           </label>
         </div>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-ink-3">
           Erstelle einen öffentlichen, schreibgeschützten Link zu deiner Sammlung —
           ideal zum Zeigen oder Verkaufen (Karten „zum Verkauf" werden hervorgehoben).
         </p>
@@ -167,11 +182,11 @@ export default function AccountPage() {
       <form onSubmit={saveProfile} className="panel space-y-3">
         <h2 className="font-semibold flex items-center gap-2"><UserIcon className="w-4 h-4" /> Profil</h2>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">E-Mail</label>
+          <label className="block text-xs text-ink-3 mb-1">E-Mail</label>
           <input className="input opacity-60" value={user?.email || ''} disabled />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Anzeigename</label>
+          <label className="block text-xs text-ink-3 mb-1">Anzeigename</label>
           <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         </div>
         <button className="btn-primary" disabled={savingProfile}>
@@ -196,7 +211,7 @@ export default function AccountPage() {
         <h2 className="font-semibold flex items-center gap-2 text-pokemon-red">
           <Trash2 className="w-4 h-4" /> Konto löschen
         </h2>
-        <p className="text-sm text-gray-400">Löscht dein Konto und alle deine Karten unwiderruflich.</p>
+        <p className="text-sm text-ink-3">Löscht dein Konto und alle deine Karten unwiderruflich.</p>
         <input className="input" type="password" placeholder="Passwort zur Bestätigung" value={delPw}
           onChange={(e) => setDelPw(e.target.value)} autoComplete="current-password" />
         <button onClick={deleteAccount} disabled={deleting || !delPw}
@@ -269,8 +284,8 @@ function SalePhotoSettings() {
           <span
             className={`text-[10px] px-2 py-0.5 rounded-full border ${
               durable
-                ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50'
-                : 'bg-amber-900/30 text-amber-400 border-amber-700/40'
+                ? 'bg-emerald-900/40 text-emerald-700 border-emerald-700/50'
+                : 'bg-amber-900/30 text-amber-700 border-amber-300'
             }`}
             title={durable
               ? 'Fotos liegen dauerhaft in Cloudflare R2.'
@@ -279,7 +294,7 @@ function SalePhotoSettings() {
             {durable ? '☁️ Dauerhafter Speicher aktiv' : '⚠️ Speicher flüchtig'}
           </span>
         </div>
-        <p className="text-sm text-gray-400 mt-1">
+        <p className="text-sm text-ink-3 mt-1">
           Deine eigenen Fotos statt des Katalogbilds. Das Scan-Foto wird automatisch
           die Vorderseite; eBay übernimmt die Bilder beim CSV-Upload.
         </p>
@@ -287,7 +302,7 @@ function SalePhotoSettings() {
 
       {/* Photos per card */}
       <div>
-        <label className="block text-xs text-gray-400 mb-1.5">Fotos pro Karte</label>
+        <label className="block text-xs text-ink-3 mb-1.5">Fotos pro Karte</label>
         <div className="flex gap-2">
           {[{ n: 1, label: 'Nur Vorderseite' }, { n: 2, label: 'Vorder- + Rückseite (2er-Pack)' }].map(({ n, label }) => (
             <button
@@ -296,8 +311,8 @@ function SalePhotoSettings() {
               disabled={loading}
               className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
                 perCard === n
-                  ? 'bg-pokemon-yellow/15 border-pokemon-yellow/50 text-pokemon-yellow font-medium'
-                  : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+                  ? 'bg-accent-soft border-pokemon-yellow/50 text-pokemon-yellow font-medium'
+                  : 'border-line text-ink-3 hover:border-ink-4 hover:text-ink'
               }`}
             >
               {label}
@@ -309,7 +324,7 @@ function SalePhotoSettings() {
       {/* Template photos */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-gray-400 flex items-center gap-1.5">
+          <label className="text-xs text-ink-3 flex items-center gap-1.5">
             <Images className="w-3.5 h-3.5" /> Feste Zusatzfotos (in jedem Listing)
           </label>
           <button
@@ -324,22 +339,22 @@ function SalePhotoSettings() {
         </div>
 
         {templates.length === 0 ? (
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-ink-4">
             Noch keine — z. B. Versandhinweis, Zustands-Übersicht oder dein Logo.
           </p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {templates.map((t) => (
-              <div key={t.id} className="relative bg-gray-800 rounded-lg p-1.5 flex flex-col gap-1">
-                <img src={t.url} alt={t.label || 'Zusatzfoto'} className="w-full h-24 object-contain rounded bg-gray-900" />
+              <div key={t.id} className="relative bg-surface-2 rounded-lg p-1.5 flex flex-col gap-1">
+                <img src={t.url} alt={t.label || 'Zusatzfoto'} className="w-full h-24 object-contain rounded bg-surface-3" />
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px] text-gray-500">Position</span>
+                  <span className="text-[10px] text-ink-3">Position</span>
                   <input
                     type="number" min={1} max={24} value={t.position || 3}
                     onChange={(e) => setPosition(t.id, Number(e.target.value))}
-                    className="w-12 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-xs text-white"
+                    className="w-12 bg-surface-3 border border-line rounded px-1.5 py-0.5 text-xs text-ink"
                   />
-                  <button onClick={() => remove(t.id)} className="ml-auto text-gray-500 hover:text-pokemon-red" title="Entfernen">
+                  <button onClick={() => remove(t.id)} className="ml-auto text-ink-3 hover:text-pokemon-red" title="Entfernen">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -347,7 +362,7 @@ function SalePhotoSettings() {
             ))}
           </div>
         )}
-        <p className="text-[11px] text-gray-600 mt-1.5">
+        <p className="text-[11px] text-ink-4 mt-1.5">
           Reihenfolge im Listing: Vorderseite, Rückseite, dann Zusatzfotos nach Position.
         </p>
       </div>

@@ -44,16 +44,16 @@ function saveCardLang(code) {
 
 function SourceBadge({ source }) {
   if (source === 'set_number')
-    return <span className="badge bg-emerald-800 text-emerald-200 text-[10px]">🔢 Set#</span>
+    return <span className="badge bg-emerald-100 text-emerald-800 text-[10px]">🔢 Set#</span>
   if (source === 'number_total')
-    return <span className="badge bg-teal-800 text-teal-200 text-[10px]">🔢 #/Total</span>
+    return <span className="badge bg-teal-800 text-teal-800 text-[10px]">🔢 #/Total</span>
   if (source === 'phash')
-    return <span className="badge bg-emerald-800 text-emerald-200 text-[10px]">📸 Visual</span>
+    return <span className="badge bg-emerald-100 text-emerald-800 text-[10px]">📸 Visual</span>
   if (source === 'cardmarket')
-    return <span className="badge bg-blue-800 text-blue-200 text-[10px]">CM</span>
+    return <span className="badge bg-blue-800 text-blue-800 text-[10px]">CM</span>
   if (source === 'tcg_variant')
-    return <span className="badge bg-purple-800 text-purple-200 text-[10px]">Variant</span>
-  return <span className="badge bg-gray-700 text-gray-400 text-[10px]">TCG</span>
+    return <span className="badge bg-purple-800 text-purple-800 text-[10px]">Variant</span>
+  return <span className="badge bg-surface-3 text-ink-3 text-[10px]">TCG</span>
 }
 
 // ── Single result row ─────────────────────────────────────────────────────────
@@ -67,30 +67,30 @@ function CandidateRow({ card, isSelected, onSelect, showLang = false }) {
       onClick={() => onSelect(card)}
       className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all border-2 ${
         isSelected
-          ? 'border-pokemon-yellow bg-pokemon-yellow/5'
-          : 'border-transparent hover:border-gray-600 hover:bg-white/5'
+          ? 'border-pokemon-yellow bg-accent/5'
+          : 'border-transparent hover:border-ink-4 hover:bg-surface-2'
       }`}
     >
       {/* Thumbnail */}
-      <div className="shrink-0 w-10 h-14 rounded overflow-hidden bg-gray-900 flex items-center justify-center">
+      <div className="shrink-0 w-10 h-14 rounded overflow-hidden bg-surface-3 flex items-center justify-center">
         {imgUrl ? (
           <img src={imgUrl} alt={card.name} className="h-full w-full object-cover" loading="lazy" />
         ) : (
-          <span className="text-gray-700 text-lg">🃏</span>
+          <span className="text-ink-4 text-lg">🃏</span>
         )}
       </div>
 
       {/* Info */}
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="font-semibold text-sm text-white leading-tight">
+          <span className="font-semibold text-sm text-ink leading-tight">
             {card.loc_name && card.loc_name !== card.name
               ? `${card.loc_name} / ${card.name}`
               : card.name}
           </span>
           {isSelected && <Check className="w-3 h-3 text-pokemon-yellow shrink-0" />}
         </div>
-        <p className="text-xs text-gray-400 truncate">{card.set?.name}</p>
+        <p className="text-xs text-ink-3 truncate">{card.set?.name}</p>
         <div className="flex flex-wrap items-center gap-1.5">
           <RarityBadge rarity={card.rarity} />
           <SourceBadge source={card._source} />
@@ -98,7 +98,7 @@ function CandidateRow({ card, isSelected, onSelect, showLang = false }) {
             <LanguageBadge language={card._language} forceShow />
           )}
           {card._confidence != null && (
-            <span className="badge bg-gray-700 text-gray-400 text-[10px]">{card._confidence}%</span>
+            <span className="badge bg-surface-3 text-ink-3 text-[10px]">{card._confidence}%</span>
           )}
         </div>
       </div>
@@ -106,7 +106,7 @@ function CandidateRow({ card, isSelected, onSelect, showLang = false }) {
       {/* Price */}
       {price != null && (
         <div className="shrink-0 text-right">
-          <p className="text-xs text-gray-500">Trend</p>
+          <p className="text-xs text-ink-3">Trend</p>
           <p className="text-sm font-bold text-pokemon-yellow">€{price.toFixed(2)}</p>
         </div>
       )}
@@ -114,7 +114,7 @@ function CandidateRow({ card, isSelected, onSelect, showLang = false }) {
         <a
           href={card.cm_url} target="_blank" rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="shrink-0 text-gray-500 hover:text-blue-400"
+          className="shrink-0 text-ink-3 hover:text-blue-600"
           title="View on Cardmarket"
         >
           <ExternalLink className="w-3.5 h-3.5" />
@@ -156,15 +156,15 @@ function LanguageVariantsSection({ variants, active, onSelect, autoExpand }) {
   const displayLangs = filterLang === 'ALL' ? sortedLangs : sortedLangs.filter((l) => l === filterLang)
 
   return (
-    <div className="border-t border-gray-800 pt-4" ref={autoExpand ? deRef : null}>
+    <div className="border-t border-line pt-4" ref={autoExpand ? deRef : null}>
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white font-medium w-full"
+        className="flex items-center gap-1.5 text-sm text-ink-3 hover:text-ink font-medium w-full"
       >
         <Layers className="w-4 h-4 shrink-0" />
         <span className="flex-1 text-left">
           Other language versions
-          <span className="ml-2 text-gray-600 font-normal">({variants.length})</span>
+          <span className="ml-2 text-ink-4 font-normal">({variants.length})</span>
         </span>
         {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
       </button>
@@ -178,8 +178,8 @@ function LanguageVariantsSection({ variants, active, onSelect, autoExpand }) {
                 onClick={() => setFilterLang('ALL')}
                 className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
                   filterLang === 'ALL'
-                    ? 'bg-gray-600 border-gray-600 text-white'
-                    : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                    ? 'bg-ink border-ink text-white'
+                    : 'border-line text-ink-3 hover:border-ink-4'
                 }`}
               >
                 All
@@ -190,12 +190,12 @@ function LanguageVariantsSection({ variants, active, onSelect, autoExpand }) {
                   onClick={() => setFilterLang(lang)}
                   className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
                     filterLang === lang
-                      ? 'bg-gray-600 border-gray-600 text-white'
-                      : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                      ? 'bg-ink border-ink text-white'
+                      : 'border-line text-ink-3 hover:border-ink-4'
                   }`}
                 >
                   {langFlag(lang)} {lang}
-                  <span className="ml-1 text-gray-600">({grouped[lang].length})</span>
+                  <span className="ml-1 text-ink-4">({grouped[lang].length})</span>
                 </button>
               ))}
             </div>
@@ -204,7 +204,7 @@ function LanguageVariantsSection({ variants, active, onSelect, autoExpand }) {
           {/* Cards per language group */}
           {displayLangs.map((lang) => (
             <div key={lang}>
-              <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-1 px-1">
+              <p className="text-[10px] font-semibold text-ink-4 uppercase tracking-widest mb-1 px-1">
                 {langFlag(lang)} {langLabel(lang)}
               </p>
               <div className="space-y-0.5">
@@ -218,7 +218,7 @@ function LanguageVariantsSection({ variants, active, onSelect, autoExpand }) {
                   />
                 ))}
                 {grouped[lang].length > 8 && (
-                  <p className="text-xs text-gray-600 px-3 py-1">
+                  <p className="text-xs text-ink-4 px-3 py-1">
                     + {grouped[lang].length - 8} more printings
                   </p>
                 )}
@@ -400,43 +400,43 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-pokemon-card border border-gray-700 rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
+      <div className="bg-pokemon-card border border-line rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
 
         {/* ── Header ── */}
-        <div className="flex items-start justify-between px-5 py-4 border-b border-gray-700 shrink-0">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-line shrink-0">
           <div className="flex items-start gap-3 min-w-0">
             {result?.thumbnail_url && (
               <img
                 src={result.thumbnail_url}
                 alt="Uploaded card"
-                className="w-10 h-14 rounded object-cover border border-gray-700 shrink-0"
+                className="w-10 h-14 rounded object-cover border border-line shrink-0"
               />
             )}
             <div className="min-w-0">
               <h2 className="font-bold text-lg">Confirm Card Match</h2>
-              <p className="text-sm text-gray-400 truncate">
+              <p className="text-sm text-ink-3 truncate">
                 {result?.filename}
                 {result?.identification_method === 'set_number' ? null : (
                   <>
                     {result?.ocr_name ? ` · OCR: "${result.ocr_name}"` : ''}
                     {result?.ocr_name_translated && result.ocr_name_translated !== result.ocr_name
-                      ? <span className="text-blue-400"> → "{result.ocr_name_translated}"</span>
+                      ? <span className="text-blue-600"> → "{result.ocr_name_translated}"</span>
                       : null}
                     {result?.identification_method === 'phash' && (
-                      <span className="ml-1 text-emerald-400 font-medium">· visual match</span>
+                      <span className="ml-1 text-emerald-700 font-medium">· visual match</span>
                     )}
                   </>
                 )}
               </p>
               {result?.identification_method === 'set_number' && (
-                <span className="inline-flex items-center gap-1 mt-0.5 text-xs font-semibold text-emerald-400 bg-emerald-900/40 border border-emerald-700/50 rounded-full px-2.5 py-0.5">
+                <span className="inline-flex items-center gap-1 mt-0.5 text-xs font-semibold text-emerald-700 bg-emerald-900/40 border border-emerald-700/50 rounded-full px-2.5 py-0.5">
                   <ScanLine className="w-3 h-3" />
                   ✓ Identified from card number
                 </span>
               )}
             </div>
           </div>
-          <button onClick={onSkip} className="ml-3 text-gray-500 hover:text-white shrink-0">
+          <button onClick={onSkip} className="ml-3 text-ink-3 hover:text-ink shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -446,8 +446,8 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
 
           {/* ── Card language selector (language of the physical card) ── */}
           <div className="flex items-center gap-2 flex-wrap">
-            <Globe className="w-4 h-4 text-gray-500 shrink-0" />
-            <span className="text-xs text-gray-400">Card language:</span>
+            <Globe className="w-4 h-4 text-ink-3 shrink-0" />
+            <span className="text-xs text-ink-3">Card language:</span>
             {Object.entries(LANGUAGE_META).map(([code, { flag, label }]) => (
               <button
                 key={code}
@@ -455,8 +455,8 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
                 title={label}
                 className={`text-xs px-2 py-1 rounded-full font-medium transition-colors border ${
                   cardLanguage === code
-                    ? 'bg-pokemon-yellow text-black border-pokemon-yellow'
-                    : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+                    ? 'bg-accent text-ink border-pokemon-yellow'
+                    : 'border-line text-ink-3 hover:border-ink-4 hover:text-ink'
                 }`}
               >
                 {flag} {code}
@@ -467,7 +467,7 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
           {/* ── Auto-detected candidates ── */}
           {candidates.length > 0 ? (
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-2">
                 {result?.identification_method === 'set_number'
                   ? '✓ Matched card'
                   : candidates.length > 1
@@ -475,7 +475,7 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
                     : 'Best guess — confirm or search below'}
               </p>
               {result?.identification_method !== 'set_number' && candidates.length > 1 && (
-                <p className="text-[11px] text-gray-500 mb-2 px-1">
+                <p className="text-[11px] text-ink-3 mb-2 px-1">
                   Not 100% sure on this photo. Compare the thumbnails and select the
                   one that matches your card, or search manually below.
                 </p>
@@ -499,11 +499,11 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
             </div>
           ) : (
             <div className="text-center py-4">
-              <p className="text-gray-500 text-sm">
+              <p className="text-ink-3 text-sm">
                 No auto-detected candidates — use manual search below.
               </p>
               {result?.debug && (
-                <p className="mt-2 text-[11px] text-amber-500/90 font-mono break-words px-2">
+                <p className="mt-2 text-[11px] text-amber-800 font-mono break-words px-2">
                   Scan-Diagnose: Code={String(result.debug.code)} · Nr={String(result.debug.number)} ·
                   Total={String(result.debug.total)} · Crop={result.debug.crop} · Treffer={result.debug.n_candidates}
                 </p>
@@ -520,10 +520,10 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
           />
 
           {/* ── Manual search ── */}
-          <div className="border-t border-gray-800 pt-4">
+          <div className="border-t border-line pt-4">
             <button
               onClick={() => setShowSearch((v) => !v)}
-              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white font-medium"
+              className="flex items-center gap-1.5 text-sm text-ink-3 hover:text-ink font-medium"
             >
               {showSearch ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               Search manually
@@ -533,7 +533,7 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
               <div className="mt-3 space-y-3">
                 {/* Search language pills */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-gray-500">Search via:</span>
+                  <span className="text-xs text-ink-3">Search via:</span>
                   {LANGUAGES.map((l) => (
                     <button
                       key={l.code}
@@ -541,8 +541,8 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
                       title={l.label}
                       className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
                         searchLang === l.code
-                          ? 'bg-gray-600 border-gray-500 text-white'
-                          : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                          ? 'bg-ink border-ink text-white'
+                          : 'border-line text-ink-3 hover:border-ink-4'
                       }`}
                     >
                       {l.flag} {l.code}
@@ -589,10 +589,10 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
                 {/* Results */}
                 {searchResults.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
+                    <p className="text-xs text-ink-3 uppercase tracking-wider font-semibold">
                       Search results
                       {searchLang !== 'EN' && cmAvailable && (
-                        <span className="ml-2 text-blue-400 normal-case font-normal">
+                        <span className="ml-2 text-blue-600 normal-case font-normal">
                           Cardmarket + TCG API
                         </span>
                       )}
@@ -609,7 +609,7 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
                       <button
                         onClick={handleLoadMore}
                         disabled={loadingMore}
-                        className="w-full py-2 text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg transition-colors flex items-center justify-center gap-2"
+                        className="w-full py-2 text-sm text-ink-3 hover:text-ink border border-line hover:border-ink-4 rounded-lg transition-colors flex items-center justify-center gap-2"
                       >
                         {loadingMore
                           ? <><Loader className="w-4 h-4 animate-spin" /> Loading…</>
@@ -619,21 +619,21 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
                   </div>
                 )}
                 {showSearch && searchQuery && !searching && searchResults.length === 0 && (
-                  <p className="text-center text-sm text-gray-500 py-3">No results found</p>
+                  <p className="text-center text-sm text-ink-3 py-3">No results found</p>
                 )}
               </div>
             )}
           </div>
 
           {/* ── Card options ── */}
-          <div className="border-t border-gray-800 pt-4 space-y-4">
+          <div className="border-t border-line pt-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Condition</label>
+                <label className="block text-xs text-ink-3 mb-1">Condition</label>
                 <ConditionSelect value={condition} onChange={setCondition} />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Quantity</label>
+                <label className="block text-xs text-ink-3 mb-1">Quantity</label>
                 <input
                   type="number" min={1} max={999} value={quantity}
                   onChange={(e) => setQuantity(Number(e.target.value))}
@@ -653,22 +653,22 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
         </div>
 
         {/* ── Footer ── */}
-        <div className="border-t border-gray-700 shrink-0">
+        <div className="border-t border-line shrink-0">
           {owned && (
-            <div className="flex items-center gap-2 px-5 py-2 bg-amber-900/20 border-b border-amber-700/30">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <p className="text-xs text-amber-300">
+            <div className="flex items-center gap-2 px-5 py-2 bg-amber-50 border-b border-amber-700/30">
+              <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+              <p className="text-xs text-amber-700">
                 Du besitzt diese Karte bereits ({owned.quantity}×). Trotzdem hinzufügen?
               </p>
             </div>
           )}
           <div className="flex items-center justify-between px-5 py-4">
-            <div className="text-xs text-gray-500 truncate max-w-[60%]">
+            <div className="text-xs text-ink-3 truncate max-w-[60%]">
               {active ? (
                 <>
-                  Selected: <span className="text-white font-medium">{localizedName || active.name}</span>
+                  Selected: <span className="text-ink font-medium">{localizedName || active.name}</span>
                   {localizedName && localizedName !== active.name && (
-                    <span className="text-gray-500"> ({active.name})</span>
+                    <span className="text-ink-3"> ({active.name})</span>
                   )}
                   {cardLanguage !== 'EN' && (
                     <span className="ml-1">{langFlag(cardLanguage)}</span>

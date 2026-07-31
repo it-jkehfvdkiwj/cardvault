@@ -13,21 +13,21 @@ import { ConditionSelect } from '../components/ConditionBadge'
 import EbayExportModal from '../components/EbayExportModal'
 
 const TYPE_COLORS = {
-  Fire: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-  Water: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  Grass: 'bg-green-500/20 text-green-300 border-green-500/30',
-  Lightning: 'bg-yellow-400/20 text-yellow-300 border-yellow-400/30',
-  Psychic: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  Fighting: 'bg-amber-700/20 text-amber-400 border-amber-700/30',
-  Darkness: 'bg-gray-700/40 text-gray-300 border-gray-600/30',
+  Fire: 'bg-orange-500/20 text-orange-700 border-orange-500/30',
+  Water: 'bg-blue-500/20 text-blue-700 border-blue-500/30',
+  Grass: 'bg-green-500/20 text-green-800 border-green-500/30',
+  Lightning: 'bg-yellow-400/20 text-yellow-700 border-yellow-400/30',
+  Psychic: 'bg-purple-500/20 text-purple-700 border-purple-500/30',
+  Fighting: 'bg-amber-700/20 text-amber-700 border-amber-700/30',
+  Darkness: 'bg-surface-3/40 text-ink-2 border-line',
   Metal: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
-  Dragon: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-  Colorless: 'bg-gray-700/20 text-gray-400 border-gray-600/30',
-  Fairy: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+  Dragon: 'bg-indigo-500/20 text-indigo-700 border-indigo-500/30',
+  Colorless: 'bg-surface-3/20 text-ink-3 border-line',
+  Fairy: 'bg-pink-500/20 text-pink-700 border-pink-500/30',
 }
 
 function EnergyPip({ type }) {
-  const cls = TYPE_COLORS[type] || 'bg-gray-700/20 text-gray-400 border-gray-600/30'
+  const cls = TYPE_COLORS[type] || 'bg-surface-3/20 text-ink-3 border-line'
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${cls}`}>
       {type?.charAt(0) || '?'}
@@ -62,7 +62,7 @@ function TcgInfoSection({ cardId }) {
         <Zap className="w-4 h-4 text-pokemon-yellow" />
         <h2 className="font-semibold text-sm">Card Info</h2>
         {info.evolves_from && (
-          <span className="text-xs text-gray-500 ml-auto">Evolves from {info.evolves_from}</span>
+          <span className="text-xs text-ink-3 ml-auto">Evolves from {info.evolves_from}</span>
         )}
       </div>
 
@@ -70,12 +70,12 @@ function TcgInfoSection({ cardId }) {
       {info.abilities.map((ab, i) => (
         <div key={i} className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-900/40 text-red-300 border border-red-700/40 uppercase tracking-wide">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-900/40 text-red-700 border border-red-700/40 uppercase tracking-wide">
               {ab.type || 'Ability'}
             </span>
             <span className="font-semibold text-sm">{ab.name}</span>
           </div>
-          {ab.text && <p className="text-xs text-gray-400 leading-relaxed">{ab.text}</p>}
+          {ab.text && <p className="text-xs text-ink-3 leading-relaxed">{ab.text}</p>}
         </div>
       ))}
 
@@ -91,16 +91,16 @@ function TcgInfoSection({ cardId }) {
               <span className="ml-auto text-pokemon-yellow font-bold text-sm">{atk.damage}</span>
             )}
           </div>
-          {atk.text && <p className="text-xs text-gray-400 leading-relaxed">{atk.text}</p>}
+          {atk.text && <p className="text-xs text-ink-3 leading-relaxed">{atk.text}</p>}
         </div>
       ))}
 
       {/* Weaknesses / Resistances / Retreat */}
       {(info.weaknesses.length > 0 || info.resistances.length > 0 || info.retreat_cost > 0) && (
-        <div className="flex gap-4 pt-1 border-t border-gray-800 text-xs">
+        <div className="flex gap-4 pt-1 border-t border-line text-xs">
           {info.weaknesses.length > 0 && (
             <div>
-              <p className="text-gray-500 mb-1">Weakness</p>
+              <p className="text-ink-3 mb-1">Weakness</p>
               {info.weaknesses.map((w, i) => (
                 <span key={i} className="font-semibold">{w.type} {w.value}</span>
               ))}
@@ -108,7 +108,7 @@ function TcgInfoSection({ cardId }) {
           )}
           {info.resistances.length > 0 && (
             <div>
-              <p className="text-gray-500 mb-1">Resistance</p>
+              <p className="text-ink-3 mb-1">Resistance</p>
               {info.resistances.map((r, i) => (
                 <span key={i} className="font-semibold">{r.type} {r.value}</span>
               ))}
@@ -116,7 +116,7 @@ function TcgInfoSection({ cardId }) {
           )}
           {info.retreat_cost > 0 && (
             <div>
-              <p className="text-gray-500 mb-1">Retreat</p>
+              <p className="text-ink-3 mb-1">Retreat</p>
               <div className="flex gap-0.5">
                 {Array.from({ length: info.retreat_cost }).map((_, i) => (
                   <EnergyPip key={i} type="Colorless" />
@@ -129,14 +129,14 @@ function TcgInfoSection({ cardId }) {
 
       {/* Rules box (Trainer / Rule Box Pokémon) */}
       {info.rules.map((rule, i) => (
-        <p key={i} className="text-xs text-gray-400 italic border-t border-gray-800 pt-3 leading-relaxed">
+        <p key={i} className="text-xs text-ink-3 italic border-t border-line pt-3 leading-relaxed">
           {rule}
         </p>
       ))}
 
       {/* Flavor text */}
       {info.flavor_text && (
-        <p className="text-xs text-gray-500 italic border-t border-gray-800 pt-3 leading-relaxed">
+        <p className="text-xs text-ink-3 italic border-t border-line pt-3 leading-relaxed">
           {info.flavor_text}
         </p>
       )}
@@ -157,7 +157,7 @@ function OtherPrintingsSection({ cardId }) {
 
   return (
     <div className="panel space-y-3">
-      <h2 className="font-semibold text-sm text-gray-400 uppercase tracking-wider">
+      <h2 className="font-semibold text-sm text-ink-3 uppercase tracking-wider">
         Other Printings ({variants.length})
       </h2>
       <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
@@ -170,13 +170,13 @@ function OtherPrintingsSection({ cardId }) {
             className="shrink-0 group"
             title={`${v.name} · ${v.set_name} · ${v.rarity || ''}`}
           >
-            <div className="w-16 h-[89px] rounded-lg overflow-hidden bg-gray-900 border border-gray-800 group-hover:border-gray-500 transition-colors">
+            <div className="w-16 h-[89px] rounded-lg overflow-hidden bg-surface-3 border border-line group-hover:border-ink-4 transition-colors">
               {v.image_url
                 ? <img src={v.image_url} alt={v.name} className="w-full h-full object-cover" loading="lazy" />
-                : <div className="w-full h-full flex items-center justify-center text-2xl text-gray-700">🃏</div>}
+                : <div className="w-full h-full flex items-center justify-center text-2xl text-ink-4">🃏</div>}
             </div>
             {v.language !== 'EN' && (
-              <p className="text-[9px] text-center text-gray-600 mt-0.5">{v.language}</p>
+              <p className="text-[9px] text-center text-ink-4 mt-0.5">{v.language}</p>
             )}
           </a>
         ))}
@@ -215,24 +215,24 @@ function SalePhotos({ card, onChange }) {
 
   return (
     <div className="panel space-y-2">
-      <h2 className="font-semibold text-xs text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+      <h2 className="font-semibold text-xs text-ink-3 uppercase tracking-wider flex items-center gap-1.5">
         <ShoppingBag className="w-3.5 h-3.5" /> Verkaufs-Fotos
       </h2>
       <div className="grid grid-cols-2 gap-2">
         {slots.map((s) => (
           <div key={s.key} className="space-y-1">
-            <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden bg-gray-900 border border-gray-800 relative group">
+            <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden bg-surface-3 border border-line relative group">
               {s.url ? (
                 <img src={s.url} alt={s.label} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-gray-700 text-[11px] gap-1">
+                <div className="w-full h-full flex flex-col items-center justify-center text-ink-4 text-[11px] gap-1">
                   <ImagePlus className="w-5 h-5" /> kein Foto
                 </div>
               )}
               {s.url && (
                 <button
                   onClick={() => remove(s.key)}
-                  className="absolute top-1 right-1 bg-black/70 rounded p-1 text-gray-300 hover:text-pokemon-red opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-1 right-1 bg-black/70 rounded p-1 text-white/80 hover:text-pokemon-red opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Entfernen"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -254,7 +254,7 @@ function SalePhotos({ card, onChange }) {
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-gray-600">
+      <p className="text-[10px] text-ink-4">
         Kommen ins eBay-Listing (Vorderseite zuerst). Das Scan-Foto ist automatisch die Vorderseite.
       </p>
     </div>
@@ -267,12 +267,12 @@ function getStoredLang() {
 
 function PriceBox({ label, value, currency = '' }) {
   return (
-    <div className="bg-gray-900 rounded-lg p-2.5 text-center">
-      <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</p>
+    <div className="bg-surface-3 rounded-lg p-2.5 text-center">
+      <p className="text-[10px] text-ink-3 uppercase tracking-wide">{label}</p>
       <p className="font-bold text-sm mt-0.5">
         {value != null
           ? <span className="text-pokemon-yellow">{currency}{typeof value === 'number' ? value.toFixed(2) : value}</span>
-          : <span className="text-gray-600">–</span>}
+          : <span className="text-ink-4">–</span>}
       </p>
     </div>
   )
@@ -383,29 +383,40 @@ export default function CardDetailPage() {
     setWantlisting(false)
   }
 
-  if (loading) return <div className="p-8 text-gray-400">Loading…</div>
-  if (!card) return <div className="p-8 text-gray-400">Card not found</div>
+  if (loading) {
+    return (
+      <div className="p-4 sm:p-6 max-w-5xl mx-auto grid md:grid-cols-[280px_1fr] gap-6">
+        <div className="skeleton aspect-[2.5/3.5]" />
+        <div className="space-y-3">
+          <div className="skeleton h-8 w-2/3" />
+          <div className="skeleton h-4 w-1/3" />
+          <div className="skeleton h-40" />
+        </div>
+      </div>
+    )
+  }
+  if (!card) return <div className="p-8 text-ink-3">Card not found</div>
 
   const hasEurPrices = card.market_price_eur != null || card.price_trend_eur != null || card.price_low_eur != null
   const hasUsdPrices = card.market_price_usd != null || card.price_low_usd != null
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <Link to="/collection" className="flex items-center gap-1 text-gray-400 hover:text-white text-sm">
+      <Link to="/collection" className="flex items-center gap-1 text-ink-3 hover:text-ink text-sm">
         <ArrowLeft className="w-4 h-4" /> Back to Collection
       </Link>
 
       <div className="grid md:grid-cols-[280px,1fr] gap-6">
         {/* Card image */}
         <div className="space-y-3">
-          <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden bg-gray-900">
+          <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden bg-surface-3">
             {card.image_url ? (
               <img src={card.image_url} alt={card.name} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-6xl text-gray-700">🃏</div>
+              <div className="w-full h-full flex items-center justify-center text-6xl text-ink-4">🃏</div>
             )}
           </div>
-          <p className="text-xs text-center text-gray-600">
+          <p className="text-xs text-center text-ink-4">
             {card.tcg_card_id}
             {card.cm_product_id && (
               <span className="ml-2 text-blue-600">CM #{card.cm_product_id}</span>
@@ -424,17 +435,17 @@ export default function CardDetailPage() {
             <div className="flex flex-wrap gap-2 mt-2">
               <RarityBadge rarity={card.rarity} />
               <LanguageBadge language={card.language} forceShow />
-              {card.hp && <span className="badge bg-red-900 text-red-200">HP {card.hp}</span>}
-              {card.card_type && <span className="badge bg-gray-700 text-gray-300">{card.card_type}</span>}
+              {card.hp && <span className="badge bg-red-900 text-red-800">HP {card.hp}</span>}
+              {card.card_type && <span className="badge bg-surface-3 text-ink-2">{card.card_type}</span>}
             </div>
-            <p className="text-gray-400 text-sm mt-1">{card.set_name}</p>
+            <p className="text-ink-3 text-sm mt-1">{card.set_name}</p>
           </div>
 
           {/* ── EUR Prices (Cardmarket) ── PRIMARY ────────────────── */}
           <div className="panel space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Euro className="w-4 h-4 text-blue-400" />
+                <Euro className="w-4 h-4 text-blue-600" />
                 <h2 className="font-semibold text-sm">Cardmarket Prices (EUR)</h2>
               </div>
               <div className="flex items-center gap-2">
@@ -443,7 +454,7 @@ export default function CardDetailPage() {
                     href={cmUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
                   >
                     <ExternalLink className="w-3 h-3" /> View listing
                   </a>
@@ -466,7 +477,7 @@ export default function CardDetailPage() {
                 <PriceBox label="Low" value={card.price_low_eur} currency="€" />
               </div>
             ) : (
-              <p className="text-sm text-gray-600 italic">
+              <p className="text-sm text-ink-4 italic">
                 No EUR prices —{' '}
                 {card.cm_product_id
                   ? 'click Refresh to load from Cardmarket'
@@ -478,7 +489,7 @@ export default function CardDetailPage() {
           {/* ── USD Prices (TCGPlayer) ── SECONDARY ───────────────── */}
           <div className="panel space-y-3">
             <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-green-400" />
+              <DollarSign className="w-4 h-4 text-green-700" />
               <h2 className="font-semibold text-sm">TCGPlayer Prices (USD)</h2>
             </div>
 
@@ -490,11 +501,11 @@ export default function CardDetailPage() {
                 <PriceBox label="High" value={card.price_high_usd} currency="$" />
               </div>
             ) : (
-              <p className="text-sm text-gray-600 italic">No USD prices — click Refresh</p>
+              <p className="text-sm text-ink-4 italic">No USD prices — click Refresh</p>
             )}
 
             {card.price_updated_at && (
-              <p className="text-[10px] text-gray-600">
+              <p className="text-[10px] text-ink-4">
                 Updated: {new Date(card.price_updated_at).toLocaleString()}
               </p>
             )}
@@ -508,18 +519,18 @@ export default function CardDetailPage() {
 
           {/* ── Your copy ───────────────────────────────────────────── */}
           <div className="panel space-y-4">
-            <h2 className="font-semibold text-sm text-gray-400 uppercase tracking-wider">Your Copy</h2>
+            <h2 className="font-semibold text-sm text-ink-3 uppercase tracking-wider">Your Copy</h2>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Condition</label>
+                <label className="block text-xs text-ink-3 mb-1">Condition</label>
                 <ConditionSelect
                   value={edits.condition}
                   onChange={(v) => setEdits((e) => ({ ...e, condition: v }))}
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Quantity</label>
+                <label className="block text-xs text-ink-3 mb-1">Quantity</label>
                 <input
                   type="number" min={1} max={999}
                   value={edits.quantity}
@@ -544,12 +555,12 @@ export default function CardDetailPage() {
                   checked={edits.for_trade}
                   onChange={(ev) => setEdits((e) => ({ ...e, for_trade: ev.target.checked }))}
                 />
-                <ArrowLeftRight className="w-4 h-4 text-blue-400" /> For Trade
+                <ArrowLeftRight className="w-4 h-4 text-blue-600" /> For Trade
               </label>
             </div>
 
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Notes</label>
+              <label className="block text-xs text-ink-3 mb-1">Notes</label>
               <textarea
                 rows={3}
                 value={edits.notes}
@@ -568,7 +579,7 @@ export default function CardDetailPage() {
                 <Save className="w-4 h-4" />
                 {saving ? 'Saving…' : 'Save Changes'}
               </button>
-              <button onClick={handleDelete} className="btn-ghost text-red-400 hover:text-red-300">
+              <button onClick={handleDelete} className="btn-ghost text-red-600 hover:text-red-700">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
@@ -585,8 +596,8 @@ export default function CardDetailPage() {
                 disabled={wantlisting || onWantlist || !card?.tcg_card_id}
                 className={`flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
                   onWantlist
-                    ? 'bg-pokemon-yellow/20 text-pokemon-yellow border border-pokemon-yellow/30'
-                    : 'btn-ghost border border-gray-700'
+                    ? 'bg-accent/20 text-pokemon-yellow border border-accent/50'
+                    : 'btn-ghost border border-line'
                 }`}
               >
                 <Star className={`w-4 h-4 ${onWantlist ? 'fill-pokemon-yellow text-pokemon-yellow' : ''}`} />

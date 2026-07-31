@@ -526,6 +526,29 @@ async def list_sets(db: Session) -> list[dict]:
     return sets
 
 
+async def list_sets_full(db: Session) -> list[dict]:
+    """All TCG sets INCLUDING card totals + symbol images (for set-completion
+    progress). Separate cache key so the lean dropdown cache stays untouched."""
+    cache_key = "sets:full"
+    cached = _cache_get(db, cache_key)
+    if cached is not None:
+        return cached
+
+    resp = await _client().get(
+        f"{TCG_API_BASE}/sets",
+        headers=_get_headers(),
+        params={
+            "pageSize": 250,
+            "select": "id,name,series,releaseDate,printedTotal,total,images",
+        },
+    )
+    resp.raise_for_status()
+    sets = resp.json().get("data", [])
+    sets.sort(key=lambda s: s.get("releaseDate", ""), reverse=True)
+    _cache_set(db, cache_key, sets)
+    return sets
+
+
 # ── Scoring / price helpers ───────────────────────────────────────────────────
 
 def rank_candidates(ocr_name: str, candidates: list[dict]) -> list[dict]:

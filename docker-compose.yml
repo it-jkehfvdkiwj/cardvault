@@ -1,29 +1,64 @@
-version: '3.9'
+# Production compose file for a self-hosted deploy.
+#
+#   1. Copy .env.production.example to .env and fill it in
+#   2. docker compose up --build -d
+#   3. Put a TLS reverse proxy (Caddy/Traefik/nginx+certbot) in front of :80 —
+#      the camera scanner only works over https.
+#
+# The backend serves the React build itself, so the nginx container is optional;
+# it stays here because it terminates the public port and can front a TLS proxy.
+#
+# For local development use docker-compose.dev.yml instead — it bind-mounts the
+# source so edits are picked up without a rebuild. That mount must NOT be used
+# here: it would shadow the image's /app and hide the compiled frontend.
 
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile
+    expose:
+      - '8000'
     ports:
-      - '8000:8000'
+      - '127.0.0.1:8000:8000'   # localhost only; the public port is nginx's
     volumes:
-      - ./backend:/app
-      - uploads_data:/app/uploads
+      # Named volumes so uploads and the SQLite file survive a rebuild.
+      - uploads_data:/app/backend/uploads
+      - db_data:/app/backend/data
     environment:
-      - DATABASE_URL=sqlite:///./cardvault.db
-      - UPLOAD_DIR=uploads
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:80}
-      - POKEMON_TCG_API_KEY=${POKEMON_TCG_API_KEY:-}
-      # Auth / admin — SET A REAL JWT_SECRET IN PRODUCTION
-      - JWT_SECRET=${JWT_SECRET:-dev-insecure-secret-change-me-0123456789-abcdefghij}
+      - APP_ENV=production
+      # SQLite is fine for a few hundred users. Point DATABASE_URL at Postgres
+      # (and uncomment the db service below) when you outgrow it.
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/backend/data/cardvault.db}
+      - UPLOAD_DIR=/app/backend/uploads
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-25}
+      # ── Required — the app refuses to start in production without these ────
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env — generate with: python -c "import secrets;print(secrets.token_urlsafe(48))"}
+      - CORS_ORIGINS=${CORS_ORIGINS:?Set CORS_ORIGINS in .env, e.g. https://deine-domain.de}
+      - APP_BASE_URL=${APP_BASE_URL:?Set APP_BASE_URL in .env, e.g. https://deine-domain.de}
       - ADMIN_EMAILS=${ADMIN_EMAILS:-}
-      # Billing (optional Stripe)
-      - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
-      - ALLOW_DEMO_BILLING=${ALLOW_DEMO_BILLING:-true}
+      # ── Closed test: invite-only registration + no search indexing ─────────
+      - PRIVATE_BETA=${PRIVATE_BETA:-true}
+      - INVITE_CODES=${INVITE_CODES:-}
+      # ── Launch phase: all Pro features free; set false when Stripe is live ─
+      - FREE_LAUNCH=${FREE_LAUNCH:-true}
+      - ALLOW_DEMO_BILLING=false
+      # ── Optional ───────────────────────────────────────────────────────────
+      - POKEMON_TCG_API_KEY=${POKEMON_TCG_API_KEY:-}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
 
   frontend:
@@ -31,10 +66,35 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.frontend
     ports:
-      - '80:80'
+      # Absichtlich nur auf localhost. Auf einem Server darf die App nie
+      # unverschlüsselt aus dem Internet erreichbar sein — Passwörter gingen im
+      # Klartext über die Leitung und der Kamera-Scanner funktioniert ohne https
+      # ohnehin nicht. Nach außen geht Caddy (docker-compose.caddy.yml), das sich
+      # per Docker-Netzwerk mit diesem Dienst verbindet.
+      - '127.0.0.1:8080:80'
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+
+  # Uncomment for Postgres instead of SQLite, and set
+  # DATABASE_URL=postgresql://cardvault:<password>@db:5432/cardvault
+  #
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_DB: cardvault
+  #     POSTGRES_USER: cardvault
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+  #   volumes:
+  #     - pg_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ['CMD-SHELL', 'pg_isready -U cardvault']
+  #     interval: 10s
+  #     retries: 5
+  #   restart: unless-stopped
 
 volumes:
   uploads_data:
+  db_data:
+  # pg_data:

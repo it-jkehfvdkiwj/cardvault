@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Check, Loader, Crown, Sparkles } from 'lucide-react'
+import { Check, Loader, Crown, Sparkles, Gift } from 'lucide-react'
 import { billingApi } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 
@@ -18,6 +18,9 @@ export default function PricingPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // During the launch phase every feature is unlocked for everyone, so the
+  // page becomes a preview of the future plans rather than a checkout.
+  const freeLaunch = data?.free_launch ?? user?.free_launch ?? false
   const isPro = (user?.plan || 'free') === 'pro'
 
   async function upgrade() {
@@ -30,22 +33,22 @@ export default function PricingPage() {
       }
       await billingApi.demoUpgrade()
       await refreshUser()
-      toast.success('Welcome to Pro! 🎉')
+      toast.success('Willkommen bei Pro! 🎉')
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Upgrade failed')
+      toast.error(err.response?.data?.detail || 'Upgrade fehlgeschlagen')
     }
     setBusy(false)
   }
 
   async function cancel() {
-    if (!confirm('Cancel Pro and return to the Free plan?')) return
+    if (!confirm('Pro kündigen und zum Free-Tarif zurückkehren?')) return
     setBusy(true)
     try {
       await billingApi.cancel()
       await refreshUser()
-      toast.success('Subscription canceled')
+      toast.success('Abo gekündigt')
     } catch {
-      toast.error('Could not cancel')
+      toast.error('Kündigung fehlgeschlagen')
     }
     setBusy(false)
   }
@@ -55,50 +58,74 @@ export default function PricingPage() {
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-6">
       <div className="text-center">
-        <h1 className="text-2xl font-bold">Upgrade your collection</h1>
-        <p className="text-gray-400 text-sm mt-1">
-          Start free, go Pro when you're ready to sell.
+        <h1 className="page-title">Hol mehr aus deiner Sammlung</h1>
+        <p className="text-ink-3 text-sm mt-1">
+          {freeLaunch
+            ? 'Zum Start ist alles kostenlos — ohne Zahlungsdaten, ohne Abo.'
+            : 'Kostenlos starten, auf Pro wechseln sobald du verkaufst.'}
         </p>
       </div>
 
+      {freeLaunch && (
+        <div className="panel flex items-start gap-3 border-green-300 bg-green-50">
+          <Gift className="w-5 h-5 text-green-700 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-green-800">
+              Launch-Phase: alle Pro-Funktionen sind für dich freigeschaltet.
+            </p>
+            <p className="text-ink-3 mt-1">
+              Unbegrenzt Karten, eBay-Export und Bulk-Preisupdate — nichts zu bezahlen.
+              Die Tarife unten zeigen, wie es später aussehen wird. Bestehende
+              Sammlungen bleiben selbstverständlich erhalten.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid sm:grid-cols-2 gap-4">
         {plans.map((plan) => {
-          const current = (user?.plan || 'free') === plan.id
+          const current = !freeLaunch && (user?.plan || 'free') === plan.id
           const pro = plan.id === 'pro'
           return (
             <div
               key={plan.id}
-              className={`panel relative flex flex-col ${pro ? 'border-pokemon-yellow/60' : ''}`}
+              className={`panel relative flex flex-col ${pro ? 'border-accent' : ''} ${
+                freeLaunch ? 'opacity-80' : ''
+              }`}
             >
               {pro && (
-                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-pokemon-yellow text-black text-[10px] font-bold px-2 py-0.5 rounded-full">
+                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-accent text-ink text-[10px] font-bold px-2 py-0.5 rounded-full">
                   BELIEBT
                 </span>
               )}
               <div className="flex items-center gap-2">
-                {pro ? <Crown className="w-5 h-5 text-pokemon-yellow" /> : <Sparkles className="w-5 h-5 text-gray-400" />}
+                {pro ? <Crown className="w-5 h-5 text-pokemon-yellow" /> : <Sparkles className="w-5 h-5 text-ink-3" />}
                 <h2 className="font-bold text-lg">{plan.name}</h2>
                 {current && (
-                  <span className="ml-auto badge bg-gray-700 text-gray-300 text-[10px]">Dein Plan</span>
+                  <span className="ml-auto badge bg-surface-3 text-ink-2 text-[10px]">Dein Plan</span>
                 )}
               </div>
               <div className="mt-2 mb-4">
                 <span className="text-3xl font-bold">
                   {plan.price_eur === 0 ? '0 €' : `${plan.price_eur.toFixed(2).replace('.', ',')} €`}
                 </span>
-                <span className="text-gray-500 text-sm">{plan.price_eur === 0 ? '' : ' / Monat'}</span>
+                <span className="text-ink-3 text-sm">{plan.price_eur === 0 ? '' : ' / Monat'}</span>
               </div>
               <ul className="space-y-2 text-sm flex-1">
                 {plan.highlights.map((h) => (
                   <li key={h} className="flex items-start gap-2">
-                    <Check className={`w-4 h-4 mt-0.5 shrink-0 ${pro ? 'text-pokemon-yellow' : 'text-green-400'}`} />
-                    <span className="text-gray-300">{h}</span>
+                    <Check className={`w-4 h-4 mt-0.5 shrink-0 ${pro ? 'text-pokemon-yellow' : 'text-green-700'}`} />
+                    <span className="text-ink-2">{h}</span>
                   </li>
                 ))}
               </ul>
 
               <div className="mt-5">
-                {plan.id === 'free' ? (
+                {freeLaunch ? (
+                  <button disabled className="btn-secondary w-full opacity-60 cursor-default">
+                    {pro ? 'Aktuell für alle frei' : 'Basis'}
+                  </button>
+                ) : plan.id === 'free' ? (
                   <button disabled className="btn-secondary w-full opacity-60 cursor-default">
                     {current ? 'Aktiv' : 'Basis'}
                   </button>
@@ -118,7 +145,7 @@ export default function PricingPage() {
         })}
       </div>
 
-      {!data?.stripe_enabled && !isPro && (
+      {!freeLaunch && !data?.stripe_enabled && !isPro && data?.demo_enabled && (
         <p className="text-center text-xs text-amber-600/80">
           Test-Modus: Das Upgrade erfolgt ohne Zahlung, bis Stripe konfiguriert ist.
         </p>

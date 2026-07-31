@@ -55,6 +55,44 @@ def send_email(to: str, subject: str, html: str, text: str | None = None) -> boo
         return False
 
 
+def notify_admins_new_user(
+    email: str,
+    display_name: str | None = None,
+    invite_code: str | None = None,
+    total_users: int | None = None,
+) -> None:
+    """Tell every ADMIN_EMAILS address that someone registered.
+
+    Called as a background task: during a closed test you want to know
+    immediately who came in, but a slow or misconfigured mail server must never
+    turn a successful sign-up into an error for the person registering. Failures
+    are logged and swallowed for the same reason.
+    """
+    admins = [a.strip() for a in os.getenv("ADMIN_EMAILS", "").split(",") if a.strip()]
+    if not admins:
+        return
+
+    who = f"{display_name} ({email})" if display_name else email
+    code_line = f"Einladungscode: {invite_code}" if invite_code else "Ohne Einladungscode (Admin-Adresse)"
+    total_line = f"Nutzer insgesamt: {total_users}" if total_users is not None else ""
+
+    subject = f"CardVault: neue Registrierung — {email}"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;font-size:14px;color:#222">
+      <h2 style="margin-bottom:4px">Neue Registrierung</h2>
+      <p style="font-size:16px"><strong>{who}</strong></p>
+      <p style="color:#555">{code_line}<br>{total_line}</p>
+      <p style="color:#888;font-size:12px">Details im Admin-Panel unter „Admin".</p>
+    </div>"""
+    text = f"Neue Registrierung: {who}\n{code_line}\n{total_line}"
+
+    for admin in admins:
+        try:
+            send_email(admin, subject, html, text)
+        except Exception as exc:            # never propagate into the request
+            logger.error("Admin notification to %s failed: %s", admin, exc)
+
+
 def send_password_reset(to: str, reset_link: str) -> bool:
     subject = "CardVault — Passwort zurücksetzen"
     html = f"""

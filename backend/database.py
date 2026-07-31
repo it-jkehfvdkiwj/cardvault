@@ -60,7 +60,11 @@ def run_migrations() -> None:
     # ── Portable additive columns (SQLite + Postgres) ─────────────────────────
     portable = {
         "cards": [("photo_front", "VARCHAR"), ("photo_back", "VARCHAR")],
-        "users": [("sale_photos_per_card", "INTEGER DEFAULT 1")],
+        "users": [
+            ("sale_photos_per_card", "INTEGER DEFAULT 1"),
+            ("password_changed_at", "TIMESTAMP"),
+            ("invite_code", "VARCHAR"),
+        ],
     }
     with engine.begin() as conn:
         for table, columns in portable.items():

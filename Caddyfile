@@ -1,0 +1,37 @@
+# Caddy als TLS-Reverse-Proxy vor CardVault.
+#
+# Caddy besorgt und erneuert das Let's-Encrypt-Zertifikat vollautomatisch —
+# es muss nur Port 80 und 443 aus dem Internet erreichbar sein und die Domain
+# per A-Record auf diesen Server zeigen. Ohne HTTPS funktioniert der
+# Kamera-Scanner im Browser nicht, deshalb ist das keine Kür.
+#
+# SITE_DOMAIN und ACME_EMAIL kommen aus der .env neben docker-compose.yml.
+
+{
+	# Für Ablaufwarnungen und Rückfragen von Let's Encrypt.
+	email {$ACME_EMAIL}
+}
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	# Große Foto-Uploads (bis zu 50 Karten auf einmal) durchlassen.
+	request_body {
+		max_size 60MB
+	}
+
+	reverse_proxy frontend:80 {
+		# Das Backend rate-limitet pro Client-IP und baut absolute URLs aus dem
+		# Schema — ohne diese Header sieht es nur den Proxy und würde http bauen.
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+
+		# Kartenerkennung dauert pro Bild ein paar Sekunden; ein großer Stapel
+		# darf nicht in einen Proxy-Timeout laufen.
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+}
