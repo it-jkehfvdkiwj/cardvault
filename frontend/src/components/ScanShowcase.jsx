@@ -58,7 +58,7 @@ export default function ScanShowcase() {
 
       <span aria-hidden="true" className="text-ink-4 text-xl sm:text-2xl shrink-0">→</span>
 
-      {/* Right: what CardVault made of it */}
+      {/* Right: what Cardeva made of it */}
       <div className="panel !p-3 sm:!p-4 min-w-0 flex-1 max-w-[230px]">
         <div className="flex items-center gap-1.5">
           <span className="badge bg-emerald-50 text-emerald-800 !text-[10px]">

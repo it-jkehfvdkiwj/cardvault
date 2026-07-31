@@ -13,7 +13,7 @@ Design
 A sliding-window counter kept in a dict, keyed by ``(bucket, client)``. The app
 runs as a single Uvicorn process on one instance (Render/Docker single
 container), so in-process state is exactly as accurate as a shared store would
-be — and it costs nothing. If CardVault is ever scaled to several instances,
+be — and it costs nothing. If Cardeva is ever scaled to several instances,
 swap ``_HITS`` for Redis; the public API of this module stays the same.
 
 Usage::

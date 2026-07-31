@@ -54,7 +54,7 @@ export default function AuthPage() {
             <Vault className="w-5 h-5 text-ink" strokeWidth={2.5} />
           </div>
           <span className="font-bold text-2xl tracking-tight font-display">
-            CardVault
+            Cardeva
           </span>
         </div>
 
@@ -79,7 +79,7 @@ export default function AuthPage() {
             <div className="flex items-start gap-2 text-xs text-ink-3 bg-surface-2 border border-line rounded-lg px-3 py-2 mb-4">
               <LockIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-pokemon-yellow" />
               <span>
-                CardVault ist gerade in einer <strong className="text-ink">geschlossenen
+                Cardeva ist gerade in einer <strong className="text-ink">geschlossenen
                 Testphase</strong>. Zum Registrieren brauchst du einen Einladungscode.
               </span>
             </div>

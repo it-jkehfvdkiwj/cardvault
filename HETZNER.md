@@ -1,8 +1,8 @@
-# CardVault auf einem Hetzner-Server — Schritt für Schritt
+# Cardeva auf einem Hetzner-Server — Schritt für Schritt
 
 Zum Abhaken. Plan etwa eine Stunde ein, davon ist die Hälfte Warten.
 
-Am Ende läuft CardVault unter deiner eigenen Domain mit HTTPS, in der
+Am Ende läuft Cardeva unter deiner eigenen Domain mit HTTPS, in der
 geschlossenen Testphase, und startet nach einem Neustart des Servers von selbst
 wieder.
 
@@ -136,7 +136,7 @@ docker --version
 
 ---
 
-## 6. CardVault holen und konfigurieren
+## 6. Cardeva holen und konfigurieren
 
 ```bash
 apt install -y git

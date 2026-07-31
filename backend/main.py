@@ -27,7 +27,7 @@ Base.metadata.create_all(bind=engine)
 run_migrations()
 
 app = FastAPI(
-    title="CardVault API",
+    title="Cardeva API",
     version="1.0.0",
     # Don't advertise the whole API surface publicly in production.
     docs_url=None if config.IS_PRODUCTION else "/docs",
@@ -130,7 +130,7 @@ async def health_tcg():
     keyline = "API-Key: gesetzt ✅" if has_key else "API-Key: NICHT gesetzt ⚠️"
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CardVault · API-Check</title></head>
+<title>Cardeva · API-Check</title></head>
 <body style="font-family:system-ui,sans-serif;background:#FAFAF8;color:#1A1A17;margin:0;padding:24px;text-align:center">
 <div style="max-width:520px;margin:10vh auto">
   <div style="font-size:28px;font-weight:800;color:{color};line-height:1.25">{head}</div>
@@ -262,7 +262,7 @@ app.mount("/uploads", StaticFiles(directory=str(upload_dir)), name="uploads")
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "CardVault API"}
+    return {"status": "ok", "service": "Cardeva API"}
 
 
 @app.get("/robots.txt", include_in_schema=False)

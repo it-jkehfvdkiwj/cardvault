@@ -76,7 +76,7 @@ def notify_admins_new_user(
     code_line = f"Einladungscode: {invite_code}" if invite_code else "Ohne Einladungscode (Admin-Adresse)"
     total_line = f"Nutzer insgesamt: {total_users}" if total_users is not None else ""
 
-    subject = f"CardVault: neue Registrierung — {email}"
+    subject = f"Cardeva: neue Registrierung — {email}"
     html = f"""
     <div style="font-family:Arial,sans-serif;font-size:14px;color:#222">
       <h2 style="margin-bottom:4px">Neue Registrierung</h2>
@@ -94,11 +94,11 @@ def notify_admins_new_user(
 
 
 def send_password_reset(to: str, reset_link: str) -> bool:
-    subject = "CardVault — Passwort zurücksetzen"
+    subject = "Cardeva — Passwort zurücksetzen"
     html = f"""
     <div style="font-family:Arial,sans-serif;font-size:14px;color:#222">
       <h2>Passwort zurücksetzen</h2>
-      <p>Du hast angefordert, dein CardVault-Passwort zurückzusetzen.
+      <p>Du hast angefordert, dein Cardeva-Passwort zurückzusetzen.
          Klicke auf den Button — der Link ist 1 Stunde gültig.</p>
       <p><a href="{reset_link}"
             style="background:#facc15;color:#000;padding:10px 18px;border-radius:8px;

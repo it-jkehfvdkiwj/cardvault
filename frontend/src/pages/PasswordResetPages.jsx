@@ -10,7 +10,7 @@ function Shell({ children }) {
       <div className="w-full max-w-sm">
         <Link to="/" className="flex items-center justify-center gap-2 mb-6">
           <Vault className="text-pokemon-yellow w-8 h-8" />
-          <span className="font-bold text-2xl tracking-wide text-pokemon-yellow">CardVault</span>
+          <span className="font-bold text-2xl tracking-wide text-pokemon-yellow">Cardeva</span>
         </Link>
         <div className="panel">{children}</div>
       </div>

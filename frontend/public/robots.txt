@@ -1,4 +1,4 @@
-# CardVault
+# Cardeva
 # The marketing and legal pages are indexable; everything behind a login is not.
 # Public collection pages (/u/<slug>) are deliberately excluded — the slug is the
 # only thing protecting them, so they must not end up in a search index.

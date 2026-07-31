@@ -50,7 +50,7 @@ function LegalLayout({ title, children }) {
       <header className="flex items-center justify-between px-6 py-4 max-w-3xl mx-auto w-full">
         <Link to="/" className="flex items-center gap-2">
           <Vault className="text-pokemon-yellow w-6 h-6" />
-          <span className="font-bold text-lg text-pokemon-yellow">CardVault</span>
+          <span className="font-bold text-lg text-pokemon-yellow">Cardeva</span>
         </Link>
         <Link to="/" className="btn-ghost text-sm flex items-center gap-1.5">
           <ArrowLeft className="w-4 h-4" /> Zurück
@@ -138,7 +138,7 @@ export function ImpressumPage() {
       <p>
         Pokémon sowie zugehörige Namen, Bilder und Symbole sind eingetragene Marken
         von Nintendo, Creatures Inc., GAME FREAK inc. und The Pokémon Company.
-        CardVault steht in keiner Verbindung zu diesen Unternehmen und wird von ihnen
+        Cardeva steht in keiner Verbindung zu diesen Unternehmen und wird von ihnen
         weder betrieben noch unterstützt oder geprüft. Kartendaten und Kartenbilder
         stammen aus öffentlich zugänglichen Quellen (u. a. Pokémon TCG API) und dienen
         ausschließlich der Identifikation der vom Nutzer selbst besessenen Karten.
@@ -210,7 +210,7 @@ export function DatenschutzPage() {
 
       <h2>5. Cookies und lokale Speicherung</h2>
       <p>
-        CardVault setzt <strong>keine Tracking-Cookies</strong> und bindet keine
+        Cardeva setzt <strong>keine Tracking-Cookies</strong> und bindet keine
         Analyse- oder Werbedienste ein. Nach dem Login wird lediglich dein
         Anmelde-Token im <em>localStorage</em> deines Browsers abgelegt, damit du
         angemeldet bleibst. Das ist für den von dir angeforderten Dienst unbedingt
@@ -317,7 +317,7 @@ export function AGBPage() {
     <LegalLayout title="Allgemeine Geschäftsbedingungen">
       <h2>1. Geltungsbereich und Anbieter</h2>
       <p>
-        Diese Bedingungen gelten für die Nutzung des Online-Dienstes CardVault
+        Diese Bedingungen gelten für die Nutzung des Online-Dienstes Cardeva
         („Dienst"), angeboten von {ANBIETER.name}, {ANBIETER.strasse},{' '}
         {ANBIETER.plz_ort}. Abweichende Bedingungen des Nutzers finden keine Anwendung.
       </p>
@@ -415,7 +415,7 @@ export function AGBPage() {
         <p className="text-xs text-ink-3">
           Muster-Widerrufsformular: „Hiermit widerrufe(n) ich/wir den von mir/uns
           abgeschlossenen Vertrag über die Erbringung der folgenden Dienstleistung:
-          CardVault-Abo. Bestellt am: … Name: … Anschrift: … Datum: …"
+          Cardeva-Abo. Bestellt am: … Name: … Anschrift: … Datum: …"
         </p>
       </div>
 

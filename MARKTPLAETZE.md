@@ -1,4 +1,4 @@
-# CardVault — Marktplatz-Anbindung (eBay · Whatnot · Vinted)
+# Cardeva — Marktplatz-Anbindung (eBay · Whatnot · Vinted)
 
 Stand: Juli 2026. Dieses Dokument beschreibt, was automatisiert ist, was Nutzer
 tun müssen und was DU (als Betreiber) einmalig einrichten musst.
@@ -55,7 +55,7 @@ Danach können Nutzer im Verkaufen-Dialog auf „Verbinden" klicken — der Rest
 ## Nutzer-Setup: Whatnot
 
 Whatnot-Verkäufer generieren ihren API-Token im **Seller Hub** (Entwickler-/
-API-Bereich) und fügen ihn im Whatnot-Tab des Verkaufen-Dialogs ein. CardVault
+API-Bereich) und fügen ihn im Whatnot-Tab des Verkaufen-Dialogs ein. Cardeva
 validiert den Token sofort (`me`-Query) und zeigt den Benutzernamen an.
 
 Hinweis: Die Whatnot Seller-API ist relativ neu — falls sich das GraphQL-Schema
@@ -65,7 +65,7 @@ Hinweis: Die Whatnot Seller-API ist relativ neu — falls sich das GraphQL-Schem
 
 Es gibt Drittanbieter (Crosslist, ListPerfectly …), die Vinted per Browser-
 Automatisierung befüllen. Das ist AGB-widrig, bruchanfällig und für ein
-Abo-Produkt ein rechtliches Risiko. CardVault liefert stattdessen den
+Abo-Produkt ein rechtliches Risiko. Cardeva liefert stattdessen den
 schnellsten legalen Weg: fertige Texte + Preis pro Karte zum Einfügen
 (Kopier-Button pro Karte, Gesamt-Export als .txt).
 

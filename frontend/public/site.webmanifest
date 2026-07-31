@@ -1,6 +1,6 @@
 {
-  "name": "CardVault — Pokémon-Sammlung",
-  "short_name": "CardVault",
+  "name": "Cardeva — Pokémon-Sammlung",
+  "short_name": "Cardeva",
   "description": "Pokémon-Karten scannen, Sammlung verwalten, Preise verfolgen und verkaufen.",
   "start_url": "/dashboard",
   "scope": "/",

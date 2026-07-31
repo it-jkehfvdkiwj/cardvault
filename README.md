@@ -1,4 +1,4 @@
-# CardVault 🃏
+# Cardeva 🃏
 
 A full-stack Pokémon card collection management app. Upload card photos, auto-identify them via the Pokémon TCG API, track condition & prices, and manage your wantlist.
 
@@ -151,7 +151,7 @@ to enable it later.
 
 ## Pokémon TCG API Key
 
-CardVault works **without an API key** (public rate limit: ~1000 req/day).  
+Cardeva works **without an API key** (public rate limit: ~1000 req/day).  
 For higher limits, get a free key at [pokemontcg.io](https://pokemontcg.io) and set `POKEMON_TCG_API_KEY` in `.env`.
 
 API responses are cached in SQLite for 24 hours to minimise requests.

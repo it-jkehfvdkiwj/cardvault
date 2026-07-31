@@ -82,7 +82,7 @@ def enforce() -> None:
         # Not fatal — an existing account can still log in — but nobody new can
         # register, which is confusing to debug from the outside.
         print(
-            "[CardVault] PRIVATE_BETA is on but INVITE_CODES is empty: nobody can "
+            "[Cardeva] PRIVATE_BETA is on but INVITE_CODES is empty: nobody can "
             "register. Set INVITE_CODES=deincode123 (comma-separated for several), "
             "or PRIVATE_BETA=false to open registration to everyone.",
             file=sys.stderr,
@@ -91,7 +91,7 @@ def enforce() -> None:
     if not IS_PRODUCTION:
         if os.getenv("JWT_SECRET", DEV_JWT_SECRET) == DEV_JWT_SECRET:
             print(
-                "[CardVault] Development mode — using the insecure default "
+                "[Cardeva] Development mode — using the insecure default "
                 "JWT_SECRET. Fine locally, fatal in production.",
                 file=sys.stderr,
             )
@@ -100,7 +100,7 @@ def enforce() -> None:
     problems = check_production_config()
     if problems:
         print("\n" + "=" * 72, file=sys.stderr)
-        print("CardVault refuses to start: unsafe production configuration", file=sys.stderr)
+        print("Cardeva refuses to start: unsafe production configuration", file=sys.stderr)
         print("=" * 72, file=sys.stderr)
         for p in problems:
             print(f"  ✗ {p}", file=sys.stderr)
@@ -114,7 +114,7 @@ def enforce() -> None:
 
 # ── Closed testing phase ──────────────────────────────────────────────────────
 #
-# While this is on, CardVault is not a public offer: only people holding an
+# While this is on, Cardeva is not a public offer: only people holding an
 # invite code can create an account, and search engines are told to stay away
 # entirely. That keeps the deployment a private test among people you invited
 # personally rather than a service addressed to the general public.

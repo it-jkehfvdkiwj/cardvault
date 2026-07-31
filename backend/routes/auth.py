@@ -85,7 +85,7 @@ def register(
             raise HTTPException(
                 status_code=403,
                 detail="Dieser Einladungscode ist ungültig, abgelaufen oder schon "
-                       "aufgebraucht. CardVault ist gerade in einer geschlossenen "
+                       "aufgebraucht. Cardeva ist gerade in einer geschlossenen "
                        "Testphase.",
             )
         # Only consumed once we're sure the account will actually be created.

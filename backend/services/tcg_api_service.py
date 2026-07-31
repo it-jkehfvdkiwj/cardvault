@@ -41,7 +41,7 @@ def _client() -> httpx.AsyncClient:
         _CLIENT = httpx.AsyncClient(
             timeout=httpx.Timeout(15.0, connect=5.0),
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
-            headers={"User-Agent": "CardVault/1.0"},
+            headers={"User-Agent": "Cardeva/1.0"},
         )
     return _CLIENT
 

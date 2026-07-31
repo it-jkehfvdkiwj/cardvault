@@ -28,7 +28,7 @@ export default function PublicCollectionPage() {
       <header className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto w-full">
         <Link to="/" className="flex items-center gap-2">
           <Vault className="text-pokemon-yellow w-6 h-6" />
-          <span className="font-bold text-lg text-pokemon-yellow">CardVault</span>
+          <span className="font-bold text-lg text-pokemon-yellow">Cardeva</span>
         </Link>
         <Link to="/login?mode=register" className="btn-primary text-sm">Eigene Sammlung starten</Link>
       </header>
@@ -123,7 +123,7 @@ export default function PublicCollectionPage() {
       </main>
 
       <footer className="border-t border-line px-6 py-5 text-center text-xs text-ink-4">
-        Erstellt mit <Link to="/" className="text-pokemon-yellow hover:underline">CardVault</Link>
+        Erstellt mit <Link to="/" className="text-pokemon-yellow hover:underline">Cardeva</Link>
       </footer>
     </div>
   )

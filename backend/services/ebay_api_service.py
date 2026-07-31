@@ -3,7 +3,7 @@ eBay Sell API integration — per-user account linking + live listing.
 
 Architecture
 ------------
-* CardVault registers ONE app at https://developer.ebay.com (App ID + Cert ID
+* Cardeva registers ONE app at https://developer.ebay.com (App ID + Cert ID
   + RuName). These are server-wide env vars:
       EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_RU_NAME
       EBAY_ENV = "production" | "sandbox"       (default: production)
@@ -106,7 +106,7 @@ def status(db: Session | None = None, user_id: int | None = None) -> dict:
 # ── OAuth: user consent flow ──────────────────────────────────────────────────
 
 def authorize_url(state: str) -> str:
-    """URL the user visits to link their eBay account to CardVault."""
+    """URL the user visits to link their eBay account to Cardeva."""
     cid, _, ru = _app_creds()
     if not app_configured():
         raise RuntimeError("eBay app credentials not configured")

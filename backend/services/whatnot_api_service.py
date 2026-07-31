@@ -3,7 +3,7 @@ Whatnot Seller API (GraphQL) — per-user token integration.
 
 Whatnot exposes an official Seller API at https://developers.whatnot.com
 (GraphQL over HTTPS, token auth). Sellers generate an API token in their
-Seller Hub and paste it into CardVault (Account → Marktplätze); we store it in
+Seller Hub and paste it into Cardeva (Account → Marktplätze); we store it in
 ``marketplace_connections`` and can then:
 
 * create a product + Buy-It-Now listing (cross-listing)

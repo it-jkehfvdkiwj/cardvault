@@ -1,4 +1,4 @@
-# Render blueprint for CardVault.
+# Render blueprint for Cardeva.
 #
 # Deploy: push to GitHub → render.com → New → Blueprint → pick this repo.
 # Everything below is created automatically except the values marked

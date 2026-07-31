@@ -17,7 +17,7 @@ const STEPS = [
   {
     n: '2',
     title: 'Automatisch erkennen',
-    text: 'CardVault liest Set-Nummer und Namen direkt von der Karte — sprachunabhängig, deutsche Karten inklusive.',
+    text: 'Cardeva liest Set-Nummer und Namen direkt von der Karte — sprachunabhängig, deutsche Karten inklusive.',
     icon: ScanLine,
   },
   {
@@ -39,16 +39,16 @@ const FEATURES = [
 
 const FAQ = [
   {
-    q: 'Erkennt CardVault auch deutsche Karten?',
+    q: 'Erkennt Cardeva auch deutsche Karten?',
     a: 'Ja. Die Erkennung läuft über die aufgedruckte Set-Nummer (z. B. „PAF 018/091") und ist damit sprachunabhängig. Namen werden automatisch übersetzt — aus „Charizard" wird „Glurak".',
   },
   {
     q: 'Wie funktioniert der Verkauf auf eBay?',
-    a: 'Zwei Wege: sofort per CSV-Export — Datei bei eBay hochladen, fertig. Oder du verbindest dein eBay-Konto und CardVault erstellt die Listings direkt, inklusive automatischem Beenden nach dem Verkauf.',
+    a: 'Zwei Wege: sofort per CSV-Export — Datei bei eBay hochladen, fertig. Oder du verbindest dein eBay-Konto und Cardeva erstellt die Listings direkt, inklusive automatischem Beenden nach dem Verkauf.',
   },
   {
     q: 'Was ist mit Vinted?',
-    a: 'Vinted bietet keine öffentliche Verkäufer-Schnittstelle. CardVault erstellt dir daher fertige Listing-Texte zum Einfügen — das Schnellste, was auf Vinted möglich ist.',
+    a: 'Vinted bietet keine öffentliche Verkäufer-Schnittstelle. Cardeva erstellt dir daher fertige Listing-Texte zum Einfügen — das Schnellste, was auf Vinted möglich ist.',
   },
   {
     q: 'Woher kommen die Preise?',
@@ -67,7 +67,7 @@ function Logo() {
         <Vault className="w-4 h-4 text-ink" strokeWidth={2.5} />
       </div>
       <span className="font-bold text-xl tracking-tight truncate font-display">
-        CardVault
+        Cardeva
       </span>
     </div>
   )
@@ -303,7 +303,7 @@ export default function LandingPage() {
 export function LandingFooter() {
   return (
     <footer className="border-t border-line px-6 py-6 text-center text-xs text-ink-3 space-x-4">
-      <span>© {new Date().getFullYear()} CardVault</span>
+      <span>© {new Date().getFullYear()} Cardeva</span>
       <Link to="/impressum" className="hover:text-ink">Impressum</Link>
       <Link to="/datenschutz" className="hover:text-ink">Datenschutz</Link>
       <Link to="/agb" className="hover:text-ink">AGB</Link>

@@ -18,7 +18,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     // Kept in the console so a user can copy it into a bug report.
-    console.error('[CardVault] Unerwarteter Fehler:', error, info?.componentStack)
+    console.error('[Cardeva] Unerwarteter Fehler:', error, info?.componentStack)
   }
 
   render() {

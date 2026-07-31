@@ -66,7 +66,7 @@ function SidebarNav({ user, isPro, initials, logout, onNavigate, onClose }) {
         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-yellow-300 to-amber-500 flex items-center justify-center shrink-0">
           <Vault className="w-4 h-4 text-ink" strokeWidth={2.5} />
         </div>
-        <span className="font-bold text-lg tracking-tight font-display">CardVault</span>
+        <span className="font-bold text-lg tracking-tight font-display">Cardeva</span>
         {onClose && (
           <button onClick={onClose} className="ml-auto text-ink-3 hover:text-ink md:hidden" aria-label="Menü schließen">
             <X className="w-5 h-5" />
@@ -193,7 +193,7 @@ export default function App() {
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-yellow-300 to-amber-500 flex items-center justify-center">
             <Vault className="w-3.5 h-3.5 text-ink" strokeWidth={2.5} />
           </div>
-          <span className="font-bold tracking-tight font-display">CardVault</span>
+          <span className="font-bold tracking-tight font-display">Cardeva</span>
         </header>
 
         <main className="flex-1 overflow-auto">

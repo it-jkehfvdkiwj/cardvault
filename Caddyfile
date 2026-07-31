@@ -1,4 +1,4 @@
-# Caddy als TLS-Reverse-Proxy vor CardVault.
+# Caddy als TLS-Reverse-Proxy vor Cardeva.
 #
 # Caddy besorgt und erneuert das Let's-Encrypt-Zertifikat vollautomatisch —
 # es muss nur Port 80 und 443 aus dem Internet erreichbar sein und die Domain
@@ -10,6 +10,13 @@
 {
 	# Für Ablaufwarnungen und Rückfragen von Let's Encrypt.
 	email {$ACME_EMAIL}
+}
+
+# www auf die nackte Domain umleiten. Caddy holt dafür ein eigenes Zertifikat,
+# sonst sähe jeder, der "www." davor tippt, eine Sicherheitswarnung. Eine
+# Adresse als kanonische festzulegen ist außerdem besser für Suchmaschinen.
+www.{$SITE_DOMAIN} {
+	redir https://{$SITE_DOMAIN}{uri} permanent
 }
 
 {$SITE_DOMAIN} {

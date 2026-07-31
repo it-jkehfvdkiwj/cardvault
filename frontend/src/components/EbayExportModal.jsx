@@ -397,7 +397,7 @@ export default function EbayExportModal({ onClose, forTradeDefault = false, card
                 <>
                   <p className="text-xs text-ink-3 bg-surface-2/60 border border-line rounded-xl px-3 py-2 flex items-start gap-1.5">
                     <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    Vinted bietet keine öffentliche Verkäufer-API. CardVault erstellt dir fertige
+                    Vinted bietet keine öffentliche Verkäufer-API. Cardeva erstellt dir fertige
                     Listing-Texte zum Kopieren — Titel, Beschreibung & Preis pro Karte.
                   </p>
                   <div className="flex flex-wrap items-center gap-2">

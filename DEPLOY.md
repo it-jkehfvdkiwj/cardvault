@@ -1,10 +1,10 @@
-# CardVault – Live schalten (Deployment)
+# Cardeva – Live schalten (Deployment)
 
-Kurzanleitung, um CardVault online zu stellen.
+Kurzanleitung, um Cardeva online zu stellen.
 
 ## 0. Geschlossene Testphase (der aktuelle Modus)
 
-Standardmäßig läuft CardVault als **privater Test**, nicht als öffentliches
+Standardmäßig läuft Cardeva als **privater Test**, nicht als öffentliches
 Angebot:
 
 | Variable | Wert | Wirkung |
