@@ -29,33 +29,39 @@ services:
       - APP_ENV=production
       # SQLite is fine for a few hundred users. Point DATABASE_URL at Postgres
       # (and uncomment the db service below) when you outgrow it.
-      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/backend/data/cardvault.db}
+      - "DATABASE_URL=${DATABASE_URL:-sqlite:////app/backend/data/cardvault.db}"
       - UPLOAD_DIR=/app/backend/uploads
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-25}
+      #
+      # Jeder Eintrag, in den ein Wert aus der .env eingesetzt wird, steht in
+      # Anführungszeichen. Grund: compose ersetzt die Variable *vor* dem
+      # YAML-Parser. Ein Passwort wie `geheim #1` würde ohne Quotes ab dem `#`
+      # als Kommentar weggeworfen (der Login schlägt dann mit einer irrefüh-
+      # renden Fehlermeldung fehl), und ein `: ` im Wert lässt compose den
+      # Eintrag als Mapping lesen ("unexpected type map[string]interface {}").
+      # Die Meldungen hinter :? enthalten aus demselben Grund kein ": ".
+      #
       # ── Required — the app refuses to start in production without these ────
-      # Quoted, and without ": " inside the messages: an unquoted YAML scalar
-      # containing a colon-space is parsed as a mapping, which makes compose
-      # reject the whole entry ("unexpected type map[string]interface {}").
       - "JWT_SECRET=${JWT_SECRET:?fehlt in der .env - erzeugen mit openssl rand -base64 48}"
       - "CORS_ORIGINS=${CORS_ORIGINS:?fehlt in der .env, z. B. https://deine-domain.de}"
       - "APP_BASE_URL=${APP_BASE_URL:?fehlt in der .env, z. B. https://deine-domain.de}"
-      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      - "ADMIN_EMAILS=${ADMIN_EMAILS:-}"
       # ── Closed test: invite-only registration + no search indexing ─────────
-      - PRIVATE_BETA=${PRIVATE_BETA:-true}
-      - INVITE_CODES=${INVITE_CODES:-}
+      - "PRIVATE_BETA=${PRIVATE_BETA:-true}"
+      - "INVITE_CODES=${INVITE_CODES:-}"
       # ── Launch phase: all Pro features free; set false when Stripe is live ─
-      - FREE_LAUNCH=${FREE_LAUNCH:-true}
+      - "FREE_LAUNCH=${FREE_LAUNCH:-true}"
       - ALLOW_DEMO_BILLING=false
       # ── Optional ───────────────────────────────────────────────────────────
-      - POKEMON_TCG_API_KEY=${POKEMON_TCG_API_KEY:-}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
-      - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
-      - SMTP_HOST=${SMTP_HOST:-}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - SMTP_FROM=${SMTP_FROM:-}
+      - "POKEMON_TCG_API_KEY=${POKEMON_TCG_API_KEY:-}"
+      - "STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}"
+      - "STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}"
+      - "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}"
+      - "SMTP_HOST=${SMTP_HOST:-}"
+      - "SMTP_PORT=${SMTP_PORT:-587}"
+      - "SMTP_USER=${SMTP_USER:-}"
+      - "SMTP_PASSWORD=${SMTP_PASSWORD:-}"
+      - "SMTP_FROM=${SMTP_FROM:-}"
     healthcheck:
       test: ['CMD', 'python', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4).status==200 else 1)"]
       interval: 30s
