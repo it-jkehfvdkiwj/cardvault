@@ -95,15 +95,22 @@ export default function AuthPage() {
                 />
               </Field>
             )}
+            {/* name/id und der "username"-Token sind nötig, damit iOS und Android
+                das Feldpaar als Anmeldeformular erkennen. Ohne sie bietet Safari
+                beim Registrieren kein sicheres Passwort an und speichert es
+                hinterher auch nicht im Schlüsselbund. */}
             <Field icon={Mail}>
               <input
+                id="email" name="email"
                 className="input pl-9" type="email" placeholder="E-Mail" required
                 value={email} onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
+                autoComplete="username"
+                inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false}
               />
             </Field>
             <Field icon={Lock}>
               <input
+                id={isRegister ? 'new-password' : 'current-password'} name="password"
                 className="input pl-9" type="password" placeholder="Passwort"
                 required minLength={8}
                 value={password} onChange={(e) => setPassword(e.target.value)}
