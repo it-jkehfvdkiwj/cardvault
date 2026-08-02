@@ -25,4 +25,4 @@ Disallow: /api/
 Disallow: /uploads/
 
 # Replace the host below with your real domain before launch.
-Sitemap: https://REPLACE-WITH-YOUR-DOMAIN/sitemap.xml
+Sitemap: https://cardeva.de/sitemap.xml

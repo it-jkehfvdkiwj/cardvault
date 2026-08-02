@@ -27,7 +27,11 @@ www.{$SITE_DOMAIN} {
 		max_size 60MB
 	}
 
-	reverse_proxy frontend:80 {
+	# Direkt aufs Backend: Das liefert den React-Build selbst aus und setzt dabei
+	# Sicherheits-Header, die dynamische robots.txt und die Cache-Regeln. Lief das
+	# über einen eigenen nginx, bekam nur /api diese Header — die HTML-Seite kam
+	# ohne, und die Testphase war für Suchmaschinen nicht gesperrt.
+	reverse_proxy backend:8000 {
 		# Das Backend rate-limitet pro Client-IP und baut absolute URLs aus dem
 		# Schema — ohne diese Header sieht es nur den Proxy und würde http bauen.
 		header_up X-Real-IP {remote_host}

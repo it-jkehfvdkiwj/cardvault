@@ -221,12 +221,11 @@ export function DatenschutzPage() {
       <h2>6. Empfänger und Drittdienste</h2>
       <ul>
         <li>
-          <strong>Hosting:</strong> [Name und Sitz deines Hosters eintragen, z. B.
-          „Render Services, Inc., USA" oder „Hetzner Online GmbH, Deutschland"]. Der
-          Hoster verarbeitet Daten weisungsgebunden als Auftragsverarbeiter
-          (Art. 28 DSGVO); ein entsprechender Vertrag ist geschlossen. Bei Anbietern
-          außerhalb der EU erfolgt die Übermittlung auf Grundlage der
-          EU-Standardvertragsklauseln.
+          <strong>Hosting:</strong> Hetzner Online GmbH, Industriestr. 25,
+          91710 Gunzenhausen, Deutschland. Die Server stehen in Deutschland, eine
+          Übermittlung in Drittländer findet nicht statt. Der Hoster verarbeitet
+          Daten weisungsgebunden als Auftragsverarbeiter (Art. 28 DSGVO); ein
+          entsprechender Vertrag ist geschlossen.
         </li>
         <li>
           <strong>Pokémon TCG API / PokeAPI:</strong> Abruf von Kartendaten,
@@ -249,8 +248,9 @@ export function DatenschutzPage() {
           und Fotos an eBay übertragen.
         </li>
         <li>
-          <strong>E-Mail-Versand:</strong> für Passwort-Reset-Mails nutzen wir [Name
-          deines Mailanbieters eintragen].
+          <strong>E-Mail-Versand:</strong> Aktuell versenden wir keine E-Mails; es ist
+          kein externer Mailanbieter eingebunden. Sobald ein Versand für
+          Passwort-Zurücksetzungen eingerichtet wird, ergänzen wir den Anbieter hier.
         </li>
       </ul>
       <p>

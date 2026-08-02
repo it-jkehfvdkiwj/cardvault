@@ -26,7 +26,8 @@ services:
       - "SITE_DOMAIN=${SITE_DOMAIN:?fehlt in der .env, z. B. cardeva.de}"
       - "ACME_EMAIL=${ACME_EMAIL:?fehlt in der .env}"
     depends_on:
-      - frontend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

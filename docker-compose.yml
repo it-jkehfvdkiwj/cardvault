@@ -64,21 +64,12 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.frontend
-    ports:
-      # Absichtlich nur auf localhost. Auf einem Server darf die App nie
-      # unverschlüsselt aus dem Internet erreichbar sein — Passwörter gingen im
-      # Klartext über die Leitung und der Kamera-Scanner funktioniert ohne https
-      # ohnehin nicht. Nach außen geht Caddy (docker-compose.caddy.yml), das sich
-      # per Docker-Netzwerk mit diesem Dienst verbindet.
-      - '127.0.0.1:8080:80'
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
+  # Es gibt bewusst keinen eigenen nginx-Dienst mehr. Der React-Build liegt im
+  # Backend-Image (siehe Dockerfile) und wird von FastAPI ausgeliefert — nur so
+  # bekommt auch die HTML-Seite die Sicherheits-Header, die dynamische robots.txt
+  # und die Cache-Regeln. Mit vorgeschaltetem nginx galten die nur für /api.
+  # frontend/Dockerfile.frontend und frontend/nginx.conf werden nicht mehr
+  # verwendet und können weg, sobald du sicher bist, dass alles läuft.
 
   # Uncomment for Postgres instead of SQLite, and set
   # DATABASE_URL=postgresql://cardvault:<password>@db:5432/cardvault
