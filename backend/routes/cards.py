@@ -419,13 +419,27 @@ async def upload_cards(
         code_card = None
         code_total_ok = True
         if set_abbr and card_num:
+            tcg_id = None
             try:
                 tcg_id = set_code_map.lookup_tcg_id(set_abbr, card_num)
                 if tcg_id:
                     code_card = await tcg_api_service.get_card_by_id(tcg_id, db)
                     if code_card:
                         code_total_ok = _set_total_plausible(code_card, set_total)
-            except Exception:
+                    else:
+                        _scan_log.warning(
+                            "Kartendatenbank kennt %s nicht (aus %s %s)",
+                            tcg_id, set_abbr, card_num,
+                        )
+            except Exception as exc:
+                # Used to be swallowed silently, which made an unreachable or
+                # rate-limited card database look exactly like "card not found":
+                # the scan fell through to guessing by image similarity and the
+                # cause was invisible. A timeout is not a missing card.
+                _scan_log.warning(
+                    "Kartendatenbank nicht erreichbar fuer %s: %s: %s",
+                    tcg_id or f"{set_abbr} {card_num}", type(exc).__name__, exc,
+                )
                 code_card = None
 
         if code_card and code_total_ok:
@@ -461,8 +475,11 @@ async def upload_cards(
                     candidates.append({**code_card, "_source": "set_number"})
                 if candidates:
                     identification_method = "number_total"
-            except Exception:
-                pass
+            except Exception as exc:
+                _scan_log.warning(
+                    "Nummernsuche %s/%s fehlgeschlagen: %s: %s",
+                    card_num, set_total, type(exc).__name__, exc,
+                )
 
         # If the number lookup found nothing, fall back to the code-based card
         # so a readable code still identifies the card (no regression).
