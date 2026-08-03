@@ -74,6 +74,9 @@ _SET_NUM_NOSLASH_RE = re.compile(r"\b([A-Z]{2,5})\s+(\d{1,3})\b", re.IGNORECASE)
 # Char whitelist for digit-focused collector-number reads.
 _NUM_WHITELIST = "0123456789/"
 
+# Upper bound for a plausible printed set total — see the check in _vote().
+_MAX_PRINTED_TOTAL = 400
+
 
 # ── Tesseract helpers ─────────────────────────────────────────────────────────
 
@@ -286,6 +289,15 @@ def _vote(texts: list[str]) -> tuple[str | None, str | None, str | None]:
             # Pokémon collector numbers/totals are at most 3 digits (1–999);
             # a 4-digit value is always an OCR artifact (e.g. "7078/917").
             if not (1 <= ni <= 999) or not (1 <= ti <= 999):
+                continue
+            # The *printed* total has a real-world ceiling: the largest sets ever
+            # printed sit around 260 (Cosmic Eclipse 236, Evolving Skies 203,
+            # modern Scarlet & Violet sets 140–200). Anything far above that is
+            # not a set size, it is the digit-whitelisted pass turning the
+            # copyright line into digits. This cost a real scan: "021/197" lost
+            # the vote to "2/630", which then matched a completely different
+            # card. 400 leaves generous headroom over any set that exists.
+            if ti > _MAX_PRINTED_TOTAL:
                 continue
             # Collector number can exceed the total only modestly (secret rares,
             # e.g. 198/091). A number many times the total is bogus.
