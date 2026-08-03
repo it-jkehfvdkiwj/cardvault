@@ -73,6 +73,11 @@ def cmd_import(db, args) -> int:
         f"{res['imported']} neu, {res['updated']} aktualisiert, "
         f"{res['skipped_sets']} Sets waren schon vollstaendig."
     )
+    if res.get("used_fallback"):
+        print(
+            "Hinweis: Die Set-Liste war nicht abrufbar. Es wurden nur bereits\n"
+            "bekannte Sets geladen — ein brandneues Set kann so fehlen."
+        )
     if res["failed_sets"]:
         print(
             f"Nicht geladen: {', '.join(res['failed_sets'])}\n"

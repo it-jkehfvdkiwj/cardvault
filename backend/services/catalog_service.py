@@ -132,17 +132,54 @@ def _get_with_retry(client: httpx.Client, url: str, params: dict, label: str) ->
     raise last if last else RuntimeError(f"{label} fehlgeschlagen")
 
 
+# The /sets endpoint refuses large pages. Measured: pageSize=250 returns 500 or
+# 502 every time, pageSize=50 answers instantly with the identical fields. 174
+# sets therefore cost four small requests instead of one big one — which is the
+# same lesson as the deep card pages, just at the other end of the API.
+SETS_PAGE_SIZE = 50
+
+
 def _fetch_sets(client: httpx.Client) -> list[dict]:
     """All set ids, newest first, so the useful ones land first."""
-    payload = _get_with_retry(
-        client,
-        f"{API_BASE}/sets",
-        {"pageSize": 250, "select": "id,name,series,printedTotal,releaseDate"},
-        "Set-Liste",
-    )
-    sets = payload.get("data") or []
+    sets: list[dict] = []
+    page = 1
+    while True:
+        payload = _get_with_retry(
+            client,
+            f"{API_BASE}/sets",
+            {
+                "page": page,
+                "pageSize": SETS_PAGE_SIZE,
+                "select": "id,name,series,printedTotal,releaseDate",
+            },
+            f"Set-Liste Seite {page}",
+        )
+        batch = payload.get("data") or []
+        sets.extend(batch)
+        if len(batch) < SETS_PAGE_SIZE:
+            break
+        page += 1
     sets.sort(key=lambda s: s.get("releaseDate") or "", reverse=True)
     return sets
+
+
+def _known_set_ids(db: Session) -> list[dict]:
+    """Set ids we can name without asking the API at all.
+
+    Fallback for when the set list itself is unavailable: everything already in
+    the local catalogue, plus every set the printed-code map knows. It cannot
+    discover a brand-new set, but it keeps an import running instead of turning
+    one broken endpoint into a total stop.
+    """
+    ids = {
+        r[0] for r in db.query(CatalogCard.set_id).distinct() if r[0]
+    }
+    try:
+        from services.set_code_map import SET_CODE_MAP
+        ids.update(v for v in SET_CODE_MAP.values() if v)
+    except Exception:
+        pass
+    return [{"id": i} for i in sorted(ids)]
 
 
 def _fetch_page(
@@ -179,8 +216,19 @@ def import_all(db: Session, progress=None, page_limit: int | None = None) -> dic
     imported = updated = skipped_sets = 0
     failed_sets: list[str] = []
 
+    used_fallback = False
     with httpx.Client(timeout=60, headers=_headers()) as client:
-        sets = _fetch_sets(client)
+        try:
+            sets = _fetch_sets(client)
+        except Exception as exc:
+            sets = _known_set_ids(db)
+            used_fallback = True
+            logger.warning(
+                "Set-Liste nicht abrufbar (%s) — arbeite mit %d bekannten Sets weiter",
+                type(exc).__name__, len(sets),
+            )
+            if not sets:
+                raise
         if page_limit:
             sets = sets[:page_limit]
 
@@ -253,6 +301,7 @@ def import_all(db: Session, progress=None, page_limit: int | None = None) -> dic
         "updated": updated,
         "skipped_sets": skipped_sets,
         "failed_sets": failed_sets,
+        "used_fallback": used_fallback,
     }
 
 
