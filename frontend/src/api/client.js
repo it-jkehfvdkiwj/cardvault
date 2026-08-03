@@ -136,14 +136,25 @@ export const adminApi = {
 }
 
 export const cardsApi = {
-  upload: (formData, onProgress, pairs = false) =>
+  /**
+   * Scan photos.
+   * @param {{ pairs?: boolean, binder?: boolean }} opts
+   *   pairs  — files arrive as [front, back, front, back, …]
+   *   binder — each photo shows a whole binder page; the server splits it into
+   *            one result per pocket.
+   */
+  upload: (formData, onProgress, opts = {}) =>
     api.post('/cards/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      params: pairs ? { pairs: true } : {},
+      params: {
+        ...(opts.pairs ? { pairs: true } : {}),
+        ...(opts.binder ? { binder: true } : {}),
+      },
       onUploadProgress: onProgress,
       // OCR runs server-side per card and can take a few seconds each; allow
       // generous time for multi-card batches so we don't abort with "Upload failed".
-      timeout: 180000,
+      // A binder page is up to 24 cards behind a single request, so it gets more.
+      timeout: opts.binder ? 300000 : 180000,
     }),
 
   /**
@@ -228,8 +239,16 @@ export const statsApi = {
 // Selling: per-user settings + reusable template photos for eBay listings.
 export const saleApi = {
   getSettings: () => api.get('/sale/settings'),
-  updateSettings: (photosPerCard) =>
-    api.put('/sale/settings', { photos_per_card: photosPerCard }),
+  /**
+   * Update selling settings. Accepts either the photo count on its own
+   * (`updateSettings(2)`) or a partial object (`{ sale_intro }`). Every field
+   * the server receives as null is left untouched, so the upload page can
+   * change the photo mode without clearing the saved description blocks.
+   */
+  updateSettings: (patch) =>
+    api.put('/sale/settings', typeof patch === 'number'
+      ? { photos_per_card: patch }
+      : patch),
   listTemplates: () => api.get('/sale/templates'),
   addTemplate: (file, { label, position } = {}) => {
     const fd = new FormData()

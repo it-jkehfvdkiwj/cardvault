@@ -172,18 +172,46 @@ def get_collection_ids(
 # CPU-stage concurrency: image decode + Tesseract OCR are offloaded to worker
 # threads (Tesseract runs as a subprocess, so threads give true parallelism).
 # Bounded so a 50-file batch doesn't fork dozens of Tesseract processes at once.
-_CPU_STAGE_CONCURRENCY = max(2, min(4, (os.cpu_count() or 4) // 2))
+#
+# Tesseract runs as a separate process, so the GIL is not the limit — the cores
+# are. Half the cores left a binder page mostly waiting; one worker per core
+# keeps them all busy without oversubscribing. Override with SCAN_WORKERS if a
+# bigger machine can take more.
+_CPU_STAGE_CONCURRENCY = int(
+    os.getenv("SCAN_WORKERS", "") or max(2, min(6, os.cpu_count() or 4))
+)
 
 
-def _cpu_stage_front(raw_bytes: bytes) -> dict:
-    """Blocking CPU work for one card front: decode, crop, bottom OCR.
+# One photo of a binder page may hold this many cards. Common pages are 3×3 and
+# 4×3; the cap exists so a pathological photo can't queue 200 OCR runs.
+_MAX_BINDER_CARDS = 24
+# …and this many across the whole request, however many photos were sent.
+_MAX_CARDS_PER_REQUEST = 60
+
+
+def _split_regions(raw_bytes: bytes, binder: bool = False):
+    """Decode one uploaded photo into one deskewed image per card.
+
+    Cheap: about 150 ms even for a full binder page. Deliberately separated
+    from the OCR below so that the *expensive* per-card work can be spread
+    across worker threads. Doing both in one thread made the nine cards of a
+    binder page run strictly one after another — at worst 17 s each, which blew
+    past the client timeout.
+    """
+    if binder:
+        return image_service.preprocess_multi(raw_bytes, max_cards=_MAX_BINDER_CARDS)
+    return [image_service.preprocess_card_image(raw_bytes)[1]]
+
+
+def _ocr_region(cv_img, fast: bool = False) -> dict:
+    """Blocking CPU work for ONE card: bottom OCR + save the crop.
 
     Runs in a worker thread — must not touch the DB or the event loop.
     """
-    pil_img, cv_img = image_service.preprocess_card_image(raw_bytes)
+    pil_img = image_service.to_pil(cv_img)
     set_abbr = card_num = set_total = None
     try:
-        set_abbr, card_num, set_total, cv_img = ocr_service.read_card_bottom(cv_img)
+        set_abbr, card_num, set_total, cv_img = ocr_service.read_card_bottom(cv_img, fast=fast)
     except Exception:
         pass
     temp_filename = f"tmp_{uuid.uuid4().hex}.jpg"
@@ -214,11 +242,23 @@ async def upload_cards(
     files: list[UploadFile] = File(...),
     set_code: Optional[str] = Form(None),
     pairs: bool = Query(False),
+    binder: bool = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(auth_service.get_current_user),
 ):
     if len(files) > 50:
         raise HTTPException(status_code=400, detail="Maximal 50 Bilder pro Upload.")
+    if binder and pairs:
+        raise HTTPException(
+            status_code=400,
+            detail="Mappen-Modus und 2er-Pack lassen sich nicht kombinieren — "
+                   "eine Mappenseite zeigt nur Vorderseiten.",
+        )
+    if binder and len(files) > 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Im Mappen-Modus höchstens 8 Seiten auf einmal.",
+        )
 
     # ── Phase 1: read bytes + validate (fast, sequential) ─────────────────────
     # In "2er-Pack" mode files arrive as [front, back, front, back, …]: even
@@ -252,12 +292,12 @@ async def upload_cards(
     # ── Phase 2: CPU stage (decode + OCR) — concurrent worker threads ─────────
     sem = asyncio.Semaphore(_CPU_STAGE_CONCURRENCY)
 
-    async def run_front(entry: dict):
+    async def run_split(entry: dict):
         if not entry["is_image"]:
             return None
         async with sem:
             try:
-                return await asyncio.to_thread(_cpu_stage_front, entry["raw"])
+                return await asyncio.to_thread(_split_regions, entry["raw"], binder)
             except Exception as exc:
                 return {"error": f"Image processing failed: {exc}"}
 
@@ -270,26 +310,85 @@ async def upload_cards(
             except Exception:
                 return None
 
-    cpu_results, back_paths = await asyncio.gather(
-        asyncio.gather(*(run_front(e) for e in entries)),
+    split_results, back_paths = await asyncio.gather(
+        asyncio.gather(*(run_split(e) for e in entries)),
         asyncio.gather(*(run_back(e) for e in entries)),
     )
+
+    # Now OCR every detected card in parallel. Flattening first is what makes a
+    # binder page fast: the nine crops become nine independent jobs sharing the
+    # same worker pool, instead of a queue inside one thread.
+    flat: list[tuple[int, object]] = []      # (entry index, crop)
+    for e_idx, regions in enumerate(split_results):
+        if not regions or isinstance(regions, dict):
+            continue
+        for crop in regions:
+            flat.append((e_idx, crop))
+
+    # Bulk work gets the bounded OCR effort; a single card gets the full one.
+    fast_ocr = binder or len(flat) > 4
+
+    async def run_ocr(crop):
+        async with sem:
+            try:
+                return await asyncio.to_thread(_ocr_region, crop, fast_ocr)
+            except Exception as exc:
+                return {"error": f"Image processing failed: {exc}"}
+
+    ocr_done = await asyncio.gather(*(run_ocr(crop) for _, crop in flat))
+
+    # Re-group per source photo, preserving reading order.
+    cpu_results: list = [None] * len(entries)
+    for (e_idx, _), done in zip(flat, ocr_done):
+        if isinstance(done, dict) and done.get("error"):
+            continue
+        if cpu_results[e_idx] is None:
+            cpu_results[e_idx] = []
+        cpu_results[e_idx].append(done)
+    for e_idx, regions in enumerate(split_results):
+        if isinstance(regions, dict):        # split itself failed
+            cpu_results[e_idx] = regions
+        elif regions is not None and cpu_results[e_idx] is None:
+            cpu_results[e_idx] = []          # nothing survived OCR
 
     # ── Phase 3: identification lookups (async API + DB) — sequential ─────────
     # The DB session must not be shared across threads, and these calls are
     # cache-backed / network-bound, so sequential is both safe and fast here.
+    # Flatten first: one uploaded photo can now yield several cards, so the
+    # identification loop below works on cards, not on files.
     results = []
+    jobs: list[tuple] = []      # (entry, cpu_dict, back_path, index, total)
     for entry, cpu, back_path in zip(entries, cpu_results, back_paths):
         if not entry["is_image"]:
             results.append({"filename": entry["filename"], "error": "Not an image file"})
             continue
-        if cpu is None or cpu.get("error"):
+        if cpu is None or isinstance(cpu, dict):
             results.append({
                 "filename": entry["filename"],
                 "error": (cpu or {}).get("error", "Image processing failed"),
             })
             continue
+        if not cpu:
+            results.append({
+                "filename": entry["filename"],
+                "error": "Auf diesem Bild war keine Karte zu erkennen.",
+            })
+            continue
+        for i, one in enumerate(cpu):
+            jobs.append((entry, one, back_path if i == 0 else None, i, len(cpu)))
 
+    if len(jobs) > _MAX_CARDS_PER_REQUEST:
+        # Identify what we can rather than failing the whole upload — the user
+        # keeps the first cards and is told the rest were skipped.
+        skipped = len(jobs) - _MAX_CARDS_PER_REQUEST
+        jobs = jobs[:_MAX_CARDS_PER_REQUEST]
+        results.append({
+            "filename": "",
+            "error": f"{skipped} weitere Karten wurden übersprungen — "
+                     f"maximal {_MAX_CARDS_PER_REQUEST} pro Durchgang.",
+        })
+
+    for entry, cpu, back_path, region_index, region_count in jobs:
         cv_img = cpu["cv_img"]
         local_path = cpu["local_path"]
         thumbnail_url = cpu["thumbnail_url"]
@@ -404,6 +503,11 @@ async def upload_cards(
         # the scan response stays fast.
         results.append({
             "filename": entry["filename"],
+            # Which card this is within its source photo. 1-of-1 for an ordinary
+            # scan; 3-of-9 for the third pocket of a binder page. The UI groups
+            # by these so a page stays visually together.
+            "region_index": region_index,
+            "region_count": region_count,
             **({"back_local_path": back_path} if back_path else {}),
             "ocr_name": ocr_name_raw,           # raw OCR (shown in UI subtitle)
             "ocr_name_translated": ocr_name,    # English name used for search

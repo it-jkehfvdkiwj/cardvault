@@ -161,8 +161,53 @@ def build_title(card: Card) -> str:
     return title
 
 
-def build_description(card: Card, opts: dict) -> str:
-    """Simple, clean HTML description (eBay accepts HTML)."""
+# Placeholders usable in the seller's own intro/outro text blocks. Kept small
+# and German-facing on purpose: these are typed by hand into a text box, so
+# every extra token is one more thing to get wrong.
+PLACEHOLDERS = {
+    "{name}": "Kartenname",
+    "{set}": "Set-Name",
+    "{nummer}": "Set-Code / Kartennummer",
+    "{seltenheit}": "Seltenheit",
+    "{sprache}": "Sprache",
+    "{zustand}": "Zustand",
+}
+
+
+def render_block(text: str | None, card: Card) -> str:
+    """Fill a seller text block and turn it into safe HTML paragraphs.
+
+    The text is escaped *before* the newline-to-paragraph step, so a seller can
+    type an ampersand or an angle bracket without breaking the listing — and
+    cannot inject markup into their own description either.
+    """
+    if not text or not text.strip():
+        return ""
+    lang = _LANG_LABEL.get((card.language or "EN").upper(), card.language or "EN")
+    values = {
+        "{name}": card.name or "",
+        "{set}": card.set_name or "",
+        "{nummer}": card.set_code or "",
+        "{seltenheit}": card.rarity or "",
+        "{sprache}": lang,
+        "{zustand}": _CONDITION_GRADE.get(card.condition, card.condition or ""),
+    }
+    filled = text
+    for token, value in values.items():
+        filled = filled.replace(token, value)
+    paragraphs = [escape(p.strip()) for p in filled.split("\n") if p.strip()]
+    return "".join(f"<p>{p}</p>" for p in paragraphs)
+
+
+def build_description(
+    card: Card, opts: dict, intro: str | None = None, outro: str | None = None
+) -> str:
+    """Simple, clean HTML description (eBay accepts HTML).
+
+    ``intro`` / ``outro`` are the seller's saved text blocks; when both are
+    empty the generic shipping note at the bottom is kept as a fallback so a
+    listing is never left without one.
+    """
     grade = _CONDITION_GRADE.get(card.condition, card.condition or "—")
     lang = _LANG_LABEL.get((card.language or "EN").upper(), card.language or "EN")
     rows = [
@@ -183,16 +228,59 @@ def build_description(card: Card, opts: dict) -> str:
         f"<p><img src='{escape(card.image_url)}' alt='{escape(card.name or '')}' "
         f"style='max-width:360px'/></p>" if card.image_url else ""
     )
+    intro_html = render_block(intro, card)
+    outro_html = render_block(outro, card)
+    if not outro_html and not intro_html:
+        outro_html = (
+            "<p style='color:#777;font-size:12px'>Versand als Standardbrief mit "
+            "Sendungsverfolgung möglich. Bei mehreren Karten bitte vor dem Kauf "
+            "wegen kombiniertem Versand anfragen.</p>"
+        )
     return (
         "<div style='font-family:Arial,sans-serif;font-size:14px'>"
         f"<h2>{escape(build_title(card))}</h2>"
+        f"{intro_html}"
         f"{img}"
         f"<table>{body}</table>"
-        "<p style='color:#777;font-size:12px'>Versand als Standardbrief mit "
-        "Sendungsverfolgung möglich. Bei mehreren Karten bitte vor dem Kauf "
-        "wegen kombiniertem Versand anfragen.</p>"
+        f"{outro_html}"
         "</div>"
     )
+
+
+# ── Readiness check ────────────────────────────────────────────────────────────
+
+def listing_warnings(card: Card, photos: list[str], price: float, opts: dict) -> list[str]:
+    """Everything about this card that would make a poor or risky listing.
+
+    These used to be invisible: the CSV was produced regardless, and the seller
+    only found out after eBay had published 40 listings using Pokémon's own
+    artwork at the minimum price. Surfacing them before the download is the
+    whole point.
+    """
+    out: list[str] = []
+    own_photos = sum(1 for p in (card.photo_front, card.photo_back) if p)
+    if not own_photos:
+        out.append(
+            "Kein eigenes Foto — das Angebot würde das Bild des Herstellers "
+            "verwenden. Das ist urheberrechtlich heikel und verkauft schlechter."
+        )
+    if not (card.price_trend_eur or card.market_price_eur or card.market_price_usd):
+        out.append(
+            f"Kein Marktpreis hinterlegt — es würde der Mindestpreis von "
+            f"{opts['min_price']:.2f} € eingesetzt."
+        )
+    if not photos:
+        out.append("Überhaupt kein Bild verfügbar — eBay lehnt das Angebot ab.")
+    if len(build_title(card)) >= 80:
+        out.append("Titel musste auf 80 Zeichen gekürzt werden.")
+    if not card.set_name:
+        out.append("Kein Set hinterlegt — Titel und Beschreibung bleiben dünn.")
+    if (card.quantity or 1) > 1:
+        out.append(
+            f"Menge {card.quantity}: eBay stellt daraus ein Angebot mit "
+            f"{card.quantity} Stück, nicht {card.quantity} Einzelangebote."
+        )
+    return out
 
 
 # ── CSV builder ────────────────────────────────────────────────────────────────
@@ -236,6 +324,7 @@ def build_listing_csv(
         .filter(SaleTemplatePhoto.user_id == user_id)
         .all()
     )
+    intro, outro = _text_blocks(db, user_id)
 
     out = io.StringIO()
     writer = csv.writer(out)
@@ -268,7 +357,7 @@ def build_listing_csv(
             "Add",
             opts["category"],
             build_title(c),
-            build_description(c, opts),
+            build_description(c, opts, intro, outro),
             _UNGRADED_CONDITION_ID,
             grade,
             "Pokémon",
@@ -317,10 +406,11 @@ def preview_listings(
     for c in cards:
         photos = collect_photo_urls(c, templates)
         own = sum(1 for p in (c.photo_front, c.photo_back) if p)
+        price = compute_price(c, opts)
         out.append({
             "id": c.id,
             "title": build_title(c),
-            "price": compute_price(c, opts),
+            "price": price,
             "currency": SITES.get(opts["site"], SITES["DE"])[2],
             "quantity": c.quantity or 1,
             "image_url": photos[0] if photos else c.image_url,
@@ -329,5 +419,22 @@ def preview_listings(
             "has_price_data": bool(
                 c.price_trend_eur or c.market_price_eur or c.market_price_usd
             ),
+            "warnings": listing_warnings(c, photos, price, opts),
         })
     return out
+
+
+def _text_blocks(db: Session, user_id: int) -> tuple[str | None, str | None]:
+    """The seller's saved intro/outro text, or (None, None)."""
+    from models import User
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None, None
+    return user.sale_intro, user.sale_outro
+
+
+def preview_description(db: Session, user_id: int, card: Card) -> str:
+    """Render one full description exactly as the CSV would contain it."""
+    intro, outro = _text_blocks(db, user_id)
+    return build_description(card, default_options(), intro, outro)

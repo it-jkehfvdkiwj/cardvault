@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import {
   X, Download, Eye, Loader, ShoppingBag, Info, Link2, Copy, Check,
-  RefreshCw, Zap, Unlink,
+  RefreshCw, Zap, Unlink, AlertTriangle, FileText, Images,
 } from 'lucide-react'
-import { ebayApi, marketApi, downloadBlob } from '../api/client'
+import { ebayApi, marketApi, saleApi, downloadBlob } from '../api/client'
 
 const SITE_LABELS = {
   DE: '🇩🇪 eBay.de (EUR)', AT: '🇦🇹 eBay.at (EUR)', UK: '🇬🇧 eBay.co.uk (GBP)',
@@ -36,6 +36,10 @@ export default function EbayExportModal({ onClose, forTradeDefault = false, card
   const [syncing, setSyncing] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [wnToken, setWnToken] = useState('')
+  const [sale, setSale] = useState(null)          // intro/outro text blocks
+  const [templates, setTemplates] = useState([])
+  const [savingText, setSavingText] = useState(false)
+  const [showText, setShowText] = useState(false)
 
   useEffect(() => { refreshStatus() }, [])
 
@@ -44,6 +48,31 @@ export default function EbayExportModal({ onClose, forTradeDefault = false, card
       .then(({ data }) => { setStatus(data); setOpts((o) => o || data.default_options) })
       .catch(() => toast.error('Einstellungen konnten nicht geladen werden'))
     marketApi.status().then(({ data }) => setMarket(data)).catch(() => {})
+    saleApi.getSettings().then(({ data }) => setSale(data)).catch(() => {})
+    saleApi.listTemplates().then(({ data }) => setTemplates(data.templates || [])).catch(() => {})
+  }
+
+  // Run the preview automatically once the options are known. The problems
+  // worth knowing about — missing photos, missing prices — are only visible
+  // here, and requiring a click meant most exports went out unchecked.
+  useEffect(() => {
+    if (opts && !preview && !busy) handlePreview()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opts])
+
+  async function saveText() {
+    setSavingText(true)
+    try {
+      await saleApi.updateSettings({
+        sale_intro: sale?.sale_intro || '',
+        sale_outro: sale?.sale_outro || '',
+      })
+      toast.success('Textbausteine gespeichert')
+      setPreview(null)
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Speichern fehlgeschlagen')
+    }
+    setSavingText(false)
   }
 
   function set(key, value) {
@@ -300,6 +329,94 @@ export default function EbayExportModal({ onClose, forTradeDefault = false, card
                     )}
                   </div>
 
+                  {/* Description text blocks + fixed photos — the two things
+                      that make a listing look like a shop instead of a dump.
+                      They used to live in the account settings, where nobody
+                      building a listing ever looked. */}
+                  <div className="panel !p-3 space-y-3">
+                    <button
+                      onClick={() => setShowText((v) => !v)}
+                      className="flex items-center gap-2 w-full text-sm font-semibold"
+                      aria-expanded={showText}
+                    >
+                      <FileText className="w-4 h-4 text-ink-3 shrink-0" />
+                      Beschreibung und feste Fotos
+                      <span className="ml-auto text-xs font-normal text-ink-3">
+                        {templates.length > 0
+                          ? `${templates.length} festes Foto${templates.length !== 1 ? 's' : ''}`
+                          : 'keine festen Fotos'}
+                        {' · '}
+                        {sale?.sale_intro || sale?.sale_outro ? 'eigener Text' : 'Standardtext'}
+                        {showText ? ' ▴' : ' ▾'}
+                      </span>
+                    </button>
+
+                    {showText && (
+                      <div className="space-y-3 pt-1">
+                        <p className="text-xs text-ink-3">
+                          Platzhalter werden pro Karte ersetzt:{' '}
+                          {Object.keys(sale?.placeholders || {}).map((p) => (
+                            <code key={p} className="bg-surface-2 rounded px-1 mr-1">{p}</code>
+                          ))}
+                        </p>
+                        <div>
+                          <label htmlFor="sale-intro" className="block text-xs text-ink-3 mb-1">
+                            Text über den Kartendaten
+                          </label>
+                          <textarea
+                            id="sale-intro" rows={3} className="input" maxLength={2000}
+                            placeholder="z. B. Du kaufst {name} aus {set} in {zustand}."
+                            value={sale?.sale_intro || ''}
+                            onChange={(e) => setSale((s) => ({ ...s, sale_intro: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="sale-outro" className="block text-xs text-ink-3 mb-1">
+                            Text darunter (Versand, Rückgabe …)
+                          </label>
+                          <textarea
+                            id="sale-outro" rows={3} className="input" maxLength={2000}
+                            placeholder="z. B. Versand als Großbrief mit Sendungsverfolgung. Mehrere Karten werden kombiniert verschickt."
+                            value={sale?.sale_outro || ''}
+                            onChange={(e) => setSale((s) => ({ ...s, sale_outro: e.target.value }))}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button onClick={saveText} disabled={savingText} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5">
+                            {savingText ? <Loader className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                            Text speichern
+                          </button>
+                          <a href="/account" className="text-xs text-ink-3 hover:text-ink flex items-center gap-1.5">
+                            <Images className="w-3 h-3" />
+                            Feste Fotos verwalten (z. B. Versandhinweis als 4. Bild)
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* What would go wrong if you exported right now */}
+                  {preview?.issues?.length > 0 && (
+                    <div className="panel !p-3 border-amber-300 bg-amber-50/60 space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        {preview.n_with_warnings} von {preview.count} Karten haben offene Punkte
+                      </div>
+                      <ul className="text-xs text-amber-900/90 space-y-1">
+                        {preview.issues.map((iss) => (
+                          <li key={iss.text} className="flex gap-2">
+                            <span className="font-bold shrink-0">{iss.count}×</span>
+                            <span>{iss.text}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-[11px] text-amber-900/70">
+                        Der Export funktioniert trotzdem — diese Angebote werden nur
+                        schlechter laufen als sie müssten.
+                      </p>
+                    </div>
+                  )}
+
                   {preview && (
                     <div className="panel space-y-2">
                       <div className="flex items-center justify-between text-sm">
@@ -309,7 +426,15 @@ export default function EbayExportModal({ onClose, forTradeDefault = false, card
                       <ul className="text-xs space-y-1 max-h-44 overflow-y-auto">
                         {preview.listings.slice(0, 50).map((l) => (
                           <li key={l.id} className="flex items-center justify-between gap-2 border-b border-line/60 pb-1">
-                            <span className="truncate text-ink-2">{l.title}</span>
+                            <span className="truncate text-ink-2 flex items-center gap-1.5">
+                              {l.warnings?.length > 0 && (
+                                <AlertTriangle
+                                  className="w-3 h-3 text-amber-600 shrink-0"
+                                  aria-label={l.warnings.join(' ')}
+                                />
+                              )}
+                              {l.title}
+                            </span>
                             <span className="shrink-0 font-semibold text-accent-ink">{l.price.toFixed(2)} {l.currency}</span>
                           </li>
                         ))}

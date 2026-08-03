@@ -168,7 +168,7 @@ def _vote(texts: list[str]) -> tuple[str | None, str | None, str | None]:
 
 
 def _cheap_bottom_texts(
-    cv_img: np.ndarray, stop: threading.Event | None = None
+    cv_img: np.ndarray, stop: threading.Event | None = None, fast: bool = False,
 ) -> list[str]:
     """Cheap OCR of the full bottom strip, escalating only as needed.
 
@@ -195,6 +195,14 @@ def _cheap_bottom_texts(
     texts.append(_ocr(otsu, lang="eng", psm=11))
     _, n, t = _vote(texts)
     if (n and t) or (stop and stop.is_set()):
+        return texts
+
+    # The two grayscale variants below rescue low-contrast prints, but they are
+    # the least likely to succeed and cost as much as everything above them
+    # combined. On a binder page — where the crop has a fraction of the pixels
+    # of a dedicated photo, so this deep a retry rarely pays off — we stop here
+    # and let the card be reviewed by hand instead.
+    if fast:
         return texts
 
     texts.append(_ocr(gray, lang="eng", psm=11, whitelist=_NUM_WHITELIST))
@@ -322,11 +330,15 @@ def _resolve_bottom(
 
 
 def _probe_orientation(
-    img: np.ndarray, stop: threading.Event
+    img: np.ndarray, stop: threading.Event, fast: bool = False,
 ) -> tuple[list[str], str | None, str | None, str | None]:
     """Full cheap+focused probe of one orientation; obeys the shared stop flag."""
-    texts = list(_cheap_bottom_texts(img, stop))
+    texts = list(_cheap_bottom_texts(img, stop, fast=fast))
     c, n, t = _vote(texts)
+    # The number-focused pass stays even in fast mode: measured on a hard card
+    # it is what actually produces the collector number (17.3 s → 10.1 s and
+    # still correct, versus 4.7 s and nothing at all without it). Only the
+    # low-yield grayscale retries inside the cheap pass are dropped.
     if not n and not stop.is_set():
         texts += _number_focus_texts(img, stop)
         c, n, t = _vote(texts)
@@ -334,7 +346,7 @@ def _probe_orientation(
 
 
 def read_card_bottom(
-    cv_img: np.ndarray,
+    cv_img: np.ndarray, fast: bool = False,
 ) -> tuple[str | None, str | None, str | None, np.ndarray]:
     """
     Orientation-robust bottom read. The auto-crop may leave a card upside-down,
@@ -346,12 +358,32 @@ def read_card_bottom(
     ``(code, number, total, correctly_oriented_image)`` — the returned image is
     flipped to the orientation that produced a hit, so downstream name OCR and
     perceptual hashing operate on an upright card.
+
+    ``fast`` skips the final corner fan-out. That fan-out is what rescues a
+    hard-to-read single card, but it is also by far the most expensive step —
+    measured at ~17 s on a card it ultimately fails to read. For a binder page
+    that cost is paid once per pocket, so bulk scanning passes ``fast=True``
+    and lets the review screen mark the card "Prüfen" instead. Scanning one
+    card on its own keeps the full effort.
     """
     if not TESSERACT_AVAILABLE:
         return None, None, None, cv_img
 
     flipped = cv2.rotate(cv_img, cv2.ROTATE_180)
     stop = threading.Event()
+
+    # In fast mode the two orientations run sequentially. The parallel probe
+    # halves latency for ONE card, but under bulk scanning every job already
+    # owns a worker thread — spawning two more per card oversubscribes the CPU
+    # and makes the whole page slower than doing it plainly.
+    if fast:
+        up_texts, c, n, t = _probe_orientation(cv_img, stop, fast=True)
+        if n:
+            return c, n, t, cv_img
+        _, c2, n2, t2 = _probe_orientation(flipped, stop, fast=True)
+        if n2:
+            return c2, n2, t2, flipped
+        return None, None, None, cv_img
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         fut_up = ex.submit(_probe_orientation, cv_img, stop)

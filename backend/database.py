@@ -64,6 +64,8 @@ def run_migrations() -> None:
             ("sale_photos_per_card", "INTEGER DEFAULT 1"),
             ("password_changed_at", "TIMESTAMP"),
             ("invite_code", "VARCHAR"),
+            ("sale_intro", "TEXT"),
+            ("sale_outro", "TEXT"),
         ],
     }
     with engine.begin() as conn:

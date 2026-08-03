@@ -53,7 +53,22 @@ def ebay_preview(
         for_trade_only=payload.for_trade_only,
         options=payload.options,
     )
-    return {"count": len(items), "listings": items}
+    # Aggregate the per-card warnings so the UI can lead with one honest number
+    # instead of making the seller read every row.
+    issues: dict[str, int] = {}
+    for item in items:
+        for w in item.get("warnings", []):
+            issues[w] = issues.get(w, 0) + 1
+    return {
+        "count": len(items),
+        "listings": items,
+        "n_with_warnings": sum(1 for i in items if i.get("warnings")),
+        "issues": [
+            {"text": text, "count": n}
+            for text, n in sorted(issues.items(), key=lambda kv: -kv[1])
+        ],
+        "total_value": round(sum(i["price"] * i["quantity"] for i in items), 2),
+    }
 
 
 @router.post("/export/csv")

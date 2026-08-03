@@ -37,6 +37,13 @@ class User(Base):
     # 2 = front + back / "2er-Pack" capture mode).
     sale_photos_per_card = Column(Integer, default=1, nullable=False)
 
+    # Free text placed above / below the generated listing description. Supports
+    # the placeholders documented in services/ebay_service.PLACEHOLDERS, so one
+    # saved block ("Versand als Großbrief, {name} kommt in einer Toploader-Hülle")
+    # adapts itself to every card. Plain text; newlines become paragraphs.
+    sale_intro = Column(Text)
+    sale_outro = Column(Text)
+
     # Which invite code this account was created with (closed testing phase).
     # NULL for accounts made before invites existed, or by an ADMIN_EMAILS address.
     invite_code = Column(String, index=True)

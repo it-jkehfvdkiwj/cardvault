@@ -21,16 +21,26 @@ router = APIRouter(prefix="/api/sale", tags=["sale"])
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 
+_MAX_BLOCK = 2000
+
+
 class SaleSettings(BaseModel):
-    photos_per_card: int = 1
+    photos_per_card: Optional[int] = None
+    sale_intro: Optional[str] = None
+    sale_outro: Optional[str] = None
 
 
 @router.get("/settings")
 def get_settings(user: User = Depends(auth_service.get_current_user)):
+    from services import ebay_service
+
     return {
         "photos_per_card": user.sale_photos_per_card or 1,
         # True = photos go to durable Cloudflare R2 (survive redeploys).
         "durable_storage": sale_photo_service.r2_enabled(),
+        "sale_intro": user.sale_intro or "",
+        "sale_outro": user.sale_outro or "",
+        "placeholders": ebay_service.PLACEHOLDERS,
     }
 
 
@@ -40,9 +50,25 @@ def update_settings(
     db: Session = Depends(get_db),
     user: User = Depends(auth_service.get_current_user),
 ):
-    user.sale_photos_per_card = 2 if payload.photos_per_card >= 2 else 1
+    # Every field is optional so the upload page can flip photos_per_card
+    # without wiping the text blocks, and vice versa.
+    if payload.photos_per_card is not None:
+        user.sale_photos_per_card = 2 if payload.photos_per_card >= 2 else 1
+    for field in ("sale_intro", "sale_outro"):
+        value = getattr(payload, field)
+        if value is not None:
+            if len(value) > _MAX_BLOCK:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Der Text ist zu lang (maximal {_MAX_BLOCK} Zeichen).",
+                )
+            setattr(user, field, value.strip() or None)
     db.commit()
-    return {"photos_per_card": user.sale_photos_per_card}
+    return {
+        "photos_per_card": user.sale_photos_per_card,
+        "sale_intro": user.sale_intro or "",
+        "sale_outro": user.sale_outro or "",
+    }
 
 
 # ── Template photos ───────────────────────────────────────────────────────────
