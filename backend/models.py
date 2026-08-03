@@ -1,6 +1,7 @@
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text,
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
 
@@ -44,6 +45,19 @@ class User(Base):
     sale_intro = Column(Text)
     sale_outro = Column(Text)
 
+    # The seller's photo plan: a JSON array of labels, one per shot, in order.
+    # ["Vorderseite", "Rückseite", "Ecken"] means three photos per card. Empty
+    # or invalid falls back to services.photo_plan.DEFAULT_PLAN.
+    sale_photo_plan = Column(Text)
+
+    # E-mail confirmation. Until email_verified_at is set the account cannot log
+    # in. The code itself is never stored — only a hash, same reasoning as for
+    # passwords: a leaked database must not hand out working codes.
+    email_verified_at = Column(DateTime)
+    verify_code_hash = Column(String)
+    verify_sent_at = Column(DateTime)
+    verify_attempts = Column(Integer, default=0, nullable=False)
+
     # Which invite code this account was created with (closed testing phase).
     # NULL for accounts made before invites existed, or by an ADMIN_EMAILS address.
     invite_code = Column(String, index=True)
@@ -64,8 +78,11 @@ class Card(Base):
     hp = Column(String)
     image_url = Column(String)
     local_image_path = Column(String)
-    # Seller's own photos of THIS physical card (relative filenames under the
-    # sale-photos dir), used in the eBay listing instead of the stock image.
+    # Legacy single front/back photo columns. Superseded by the ``card_photos``
+    # table, which allows any number of shots per card. They are still written
+    # so that a rollback to the previous release keeps working, and they are
+    # what run_migrations() reads to seed card_photos for existing collections.
+    # Read through services.photo_plan.card_photo_keys(), never directly.
     photo_front = Column(String)
     photo_back = Column(String)
     condition = Column(String, default="Near Mint")
@@ -88,6 +105,13 @@ class Card(Base):
     price_trend_eur = Column(Float)
     price_updated_at = Column(DateTime)
     added_at = Column(DateTime, server_default=func.now())
+
+    # Loaded eagerly: every place that reads a card for a listing needs its
+    # photos, and lazy loading turned a 200-card export into 200 extra queries.
+    photos = relationship(
+        "CardPhoto", lazy="selectin", cascade="all, delete-orphan",
+        order_by="CardPhoto.position",
+    )
 
 
 class Wantlist(Base):
@@ -143,6 +167,27 @@ class SaleTemplatePhoto(Base):
     path = Column(String, nullable=False)        # filename under the sale-photos dir
     label = Column(String)                        # optional caption ("Versandinfo")
     position = Column(Integer, default=99)        # insertion slot in the photo order
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CardPhoto(Base):
+    """One of the seller's own photos of one physical card.
+
+    Replaces the fixed ``photo_front`` / ``photo_back`` pair so a seller can
+    define their own photo plan — front, back, corners, holo angle, whatever —
+    and take as many shots per card as that plan calls for.
+
+    ``position`` is the 1-based slot in the user's plan; ``label`` is copied
+    from the plan at capture time so an old photo keeps its meaning even after
+    the plan is later renamed or reordered.
+    """
+    __tablename__ = "card_photos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    card_id = Column(Integer, ForeignKey("cards.id"), index=True, nullable=False)
+    position = Column(Integer, default=1, nullable=False)
+    label = Column(String)
+    path = Column(String, nullable=False)         # key under the sale-photos dir
     created_at = Column(DateTime, server_default=func.now())
 
 

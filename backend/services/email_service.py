@@ -93,6 +93,33 @@ def notify_admins_new_user(
             logger.error("Admin notification to %s failed: %s", admin, exc)
 
 
+def send_verification_code(to: str, code: str) -> bool:
+    """Send the 6-digit sign-up confirmation code.
+
+    The code is repeated in the plain-text part because some clients (and most
+    smartwatch previews) never render the HTML — and a code you cannot read is
+    worse than no code at all.
+    """
+    subject = f"Cardeva — dein Bestätigungscode {code}"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;font-size:14px;color:#222">
+      <h2 style="margin-bottom:4px">Willkommen bei Cardeva</h2>
+      <p>Gib diesen Code ein, um deine E-Mail-Adresse zu bestätigen:</p>
+      <p style="font-size:32px;font-weight:bold;letter-spacing:6px;
+                background:#FDF3D7;color:#7A4E07;padding:14px 18px;
+                border-radius:10px;display:inline-block">{code}</p>
+      <p style="color:#666;font-size:12px">Der Code gilt 30 Minuten.
+         Wenn du dich nicht registriert hast, ignoriere diese E-Mail einfach —
+         ohne den Code passiert nichts.</p>
+    </div>"""
+    text = (
+        f"Dein Cardeva-Bestätigungscode: {code}\n\n"
+        "Der Code gilt 30 Minuten. Wenn du dich nicht registriert hast, "
+        "ignoriere diese E-Mail."
+    )
+    return send_email(to, subject, html, text)
+
+
 def send_password_reset(to: str, reset_link: str) -> bool:
     subject = "Cardeva — Passwort zurücksetzen"
     html = f"""

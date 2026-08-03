@@ -32,6 +32,11 @@ export function AuthProvider({ children }) {
     return data.user
   }
 
+  /**
+   * Create an account. Returns the raw response: since e-mail confirmation
+   * exists there is NO token yet — the caller has to collect the code first and
+   * then call verify(). Returning the user here would have been a lie.
+   */
   async function register(email, password, displayName, inviteCode) {
     const { data } = await authApi.register({
       email,
@@ -39,6 +44,11 @@ export function AuthProvider({ children }) {
       display_name: displayName || undefined,
       invite_code: inviteCode || undefined,
     })
+    return data
+  }
+
+  async function verify(email, code) {
+    const { data } = await authApi.verify(email, code)
     setToken(data.access_token)
     setUser(data.user)
     return data.user
@@ -57,7 +67,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout, refreshUser, setUser }}
+      value={{ user, loading, login, register, verify, logout, refreshUser, setUser }}
     >
       {children}
     </AuthContext.Provider>

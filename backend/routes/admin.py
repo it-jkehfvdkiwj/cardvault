@@ -353,11 +353,12 @@ def delete_user(
 
     # Same full erasure as the self-service account deletion, so an admin delete
     # doesn't leave orphaned rows and stored photos behind.
-    from services import sale_photo_service
+    from services import photo_plan, sale_photo_service
 
     for card in db.query(Card).filter(Card.user_id == user_id).all():
-        sale_photo_service.delete(card.photo_front)
-        sale_photo_service.delete(card.photo_back)
+        # Every photo of the card — see the same loop in routes/account.py.
+        for key in photo_plan.card_photo_keys(card):
+            sale_photo_service.delete(key)
     for tpl in db.query(SaleTemplatePhoto).filter(SaleTemplatePhoto.user_id == user_id).all():
         sale_photo_service.delete(tpl.path)
 

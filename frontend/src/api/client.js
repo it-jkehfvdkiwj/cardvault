@@ -91,6 +91,8 @@ export const authApi = {
   config: () => api.get('/auth/config'),
   register: (payload) => api.post('/auth/register', payload),
   login: (payload) => api.post('/auth/login', payload),
+  verify: (email, code) => api.post('/auth/verify', { email, code }),
+  resendVerification: (email) => api.post('/auth/verify/resend', { email }),
   me: () => api.get('/auth/me'),
   forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
   resetPassword: (token, newPassword) =>
@@ -138,8 +140,9 @@ export const adminApi = {
 export const cardsApi = {
   /**
    * Scan photos.
-   * @param {{ pairs?: boolean, binder?: boolean }} opts
-   *   pairs  — files arrive as [front, back, front, back, …]
+   * @param {{ shots?: number, binder?: boolean }} opts
+   *   shots  — photos per card, per the user's photo plan. Files must arrive
+   *            grouped: [card1 shot1…shotN, card2 shot1…shotN, …]
    *   binder — each photo shows a whole binder page; the server splits it into
    *            one result per pocket.
    */
@@ -147,7 +150,7 @@ export const cardsApi = {
     api.post('/cards/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: {
-        ...(opts.pairs ? { pairs: true } : {}),
+        ...(opts.shots > 1 ? { shots: opts.shots } : {}),
         ...(opts.binder ? { binder: true } : {}),
       },
       onUploadProgress: onProgress,

@@ -28,14 +28,20 @@ class SaleSettings(BaseModel):
     photos_per_card: Optional[int] = None
     sale_intro: Optional[str] = None
     sale_outro: Optional[str] = None
+    photo_plan: Optional[list[str]] = None
 
 
 @router.get("/settings")
 def get_settings(user: User = Depends(auth_service.get_current_user)):
-    from services import ebay_service
+    from services import ebay_service, photo_plan
 
+    plan = photo_plan.plan_of(user)
     return {
-        "photos_per_card": user.sale_photos_per_card or 1,
+        # Kept in sync with the plan length so older clients still work.
+        "photos_per_card": len(plan),
+        "photo_plan": plan,
+        "suggested_labels": photo_plan.SUGGESTED_LABELS,
+        "max_slots": photo_plan.MAX_SLOTS,
         # True = photos go to durable Cloudflare R2 (survive redeploys).
         "durable_storage": sale_photo_service.r2_enabled(),
         "sale_intro": user.sale_intro or "",
@@ -50,10 +56,26 @@ def update_settings(
     db: Session = Depends(get_db),
     user: User = Depends(auth_service.get_current_user),
 ):
-    # Every field is optional so the upload page can flip photos_per_card
-    # without wiping the text blocks, and vice versa.
-    if payload.photos_per_card is not None:
-        user.sale_photos_per_card = 2 if payload.photos_per_card >= 2 else 1
+    from services import photo_plan
+
+    # Every field is optional so the upload page can flip one setting without
+    # wiping the others.
+    if payload.photo_plan is not None:
+        try:
+            photo_plan.set_plan(user, payload.photo_plan)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    elif payload.photos_per_card is not None:
+        # Legacy path: a plain count from an older client. Grow or shrink the
+        # existing plan rather than replacing it, so custom labels survive.
+        current = photo_plan.plan_of(user)
+        want = max(1, min(payload.photos_per_card, photo_plan.MAX_SLOTS))
+        while len(current) < want:
+            nxt = photo_plan.SUGGESTED_LABELS[len(current)] if len(current) < len(
+                photo_plan.SUGGESTED_LABELS) else f"Foto {len(current) + 1}"
+            current.append(nxt)
+        photo_plan.set_plan(user, current[:want])
+    user.sale_photos_per_card = len(photo_plan.plan_of(user))
     for field in ("sale_intro", "sale_outro"):
         value = getattr(payload, field)
         if value is not None:
@@ -66,6 +88,7 @@ def update_settings(
     db.commit()
     return {
         "photos_per_card": user.sale_photos_per_card,
+        "photo_plan": photo_plan.plan_of(user),
         "sale_intro": user.sale_intro or "",
         "sale_outro": user.sale_outro or "",
     }

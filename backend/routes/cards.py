@@ -21,6 +21,7 @@ from services import (
     hash_service,
     image_service,
     ocr_service,
+    photo_plan,
     plan_service,
     sale_photo_service,
     set_code_map,
@@ -103,6 +104,9 @@ class CardConfirm(BaseModel):
     # Scan photos kept as the card's own front/back pictures for the eBay listing.
     scan_front_path: Optional[str] = None
     scan_back_path: Optional[str] = None
+    # Every scan photo for this card, in plan order. Supersedes the two fields
+    # above, which stay for clients that haven't reloaded since the deploy.
+    scan_paths: Optional[list[str]] = None
 
 
 class CardUpdate(BaseModel):
@@ -243,6 +247,7 @@ async def upload_cards(
     set_code: Optional[str] = Form(None),
     pairs: bool = Query(False),
     binder: bool = Query(False),
+    shots: int = Query(1, ge=1, le=8),
     db: Session = Depends(get_db),
     user: User = Depends(auth_service.get_current_user),
 ):
@@ -261,16 +266,20 @@ async def upload_cards(
         )
 
     # ── Phase 1: read bytes + validate (fast, sequential) ─────────────────────
-    # In "2er-Pack" mode files arrive as [front, back, front, back, …]: even
-    # indexes are fronts (identified below); odd indexes are backs — cropped,
-    # stored and attached to the preceding front so confirm() keeps them.
-    entries: list[dict] = []          # one per FRONT file, in order
+    # With a photo plan of N shots, files arrive grouped per card:
+    # [card1 shot1 … shotN, card2 shot1 … shotN, …]. The FIRST shot of each
+    # group is the one identified; the rest are cropped, stored and attached to
+    # it so confirm() can keep them all as listing photos.
+    shots_per_card = 1 if binder else shots
+    if pairs and shots_per_card < 2:
+        shots_per_card = 2            # clients from before the plan existed
+    entries: list[dict] = []          # one per card, in order
     max_bytes = config.max_upload_bytes()
     for idx, file in enumerate(files):
-        if pairs and idx % 2 == 1:
+        if shots_per_card > 1 and idx % shots_per_card != 0:
             raw = await _read_limited(file, max_bytes)
             if entries:
-                entries[-1]["back_raw"] = raw
+                entries[-1]["extra_raw"].append(raw)
             continue
 
         # Accept by MIME type OR by image file extension — browsers often send
@@ -286,7 +295,7 @@ async def upload_cards(
             "filename": file.filename,
             "raw": await _read_limited(file, max_bytes) if is_image else None,
             "is_image": is_image,
-            "back_raw": None,
+            "extra_raw": [],
         })
 
     # ── Phase 2: CPU stage (decode + OCR) — concurrent worker threads ─────────
@@ -301,18 +310,20 @@ async def upload_cards(
             except Exception as exc:
                 return {"error": f"Image processing failed: {exc}"}
 
-    async def run_back(entry: dict):
-        if not entry.get("back_raw"):
-            return None
-        async with sem:
-            try:
-                return await asyncio.to_thread(_cpu_stage_back, entry["back_raw"])
-            except Exception:
-                return None
+    async def run_extras(entry: dict):
+        """Crop and store the card's remaining plan shots (back, corners, …)."""
+        out: list[str] = []
+        for raw in entry.get("extra_raw") or []:
+            async with sem:
+                try:
+                    out.append(await asyncio.to_thread(_cpu_stage_back, raw))
+                except Exception:
+                    pass
+        return out
 
-    split_results, back_paths = await asyncio.gather(
+    split_results, extra_paths = await asyncio.gather(
         asyncio.gather(*(run_split(e) for e in entries)),
-        asyncio.gather(*(run_back(e) for e in entries)),
+        asyncio.gather(*(run_extras(e) for e in entries)),
     )
 
     # Now OCR every detected card in parallel. Flattening first is what makes a
@@ -357,8 +368,8 @@ async def upload_cards(
     # Flatten first: one uploaded photo can now yield several cards, so the
     # identification loop below works on cards, not on files.
     results = []
-    jobs: list[tuple] = []      # (entry, cpu_dict, back_path, index, total)
-    for entry, cpu, back_path in zip(entries, cpu_results, back_paths):
+    jobs: list[tuple] = []      # (entry, cpu_dict, extras, index, total)
+    for entry, cpu, extras in zip(entries, cpu_results, extra_paths):
         if not entry["is_image"]:
             results.append({"filename": entry["filename"], "error": "Not an image file"})
             continue
@@ -375,7 +386,7 @@ async def upload_cards(
             })
             continue
         for i, one in enumerate(cpu):
-            jobs.append((entry, one, back_path if i == 0 else None, i, len(cpu)))
+            jobs.append((entry, one, extras if i == 0 else [], i, len(cpu)))
 
     if len(jobs) > _MAX_CARDS_PER_REQUEST:
         # Identify what we can rather than failing the whole upload — the user
@@ -388,7 +399,7 @@ async def upload_cards(
                      f"maximal {_MAX_CARDS_PER_REQUEST} pro Durchgang.",
         })
 
-    for entry, cpu, back_path, region_index, region_count in jobs:
+    for entry, cpu, extras, region_index, region_count in jobs:
         cv_img = cpu["cv_img"]
         local_path = cpu["local_path"]
         thumbnail_url = cpu["thumbnail_url"]
@@ -508,7 +519,10 @@ async def upload_cards(
             # by these so a page stays visually together.
             "region_index": region_index,
             "region_count": region_count,
-            **({"back_local_path": back_path} if back_path else {}),
+            # All further plan shots for this card, in order. back_local_path
+            # is the first of them, kept for clients from before the plan.
+            "extra_local_paths": extras,
+            **({"back_local_path": extras[0]} if extras else {}),
             "ocr_name": ocr_name_raw,           # raw OCR (shown in UI subtitle)
             "ocr_name_translated": ocr_name,    # English name used for search
             "detected_language": detected_language,
@@ -694,13 +708,24 @@ async def confirm_card(
         price_low_eur=cm_prices.get("low_eur") or price_data.get("low_eur"),
         price_trend_eur=cm_prices.get("trend_eur") or price_data.get("trend_eur"),
         price_updated_at=datetime.utcnow() if (price_data or cm_prices) else None,
-        # Keep the seller's own scan photo(s) for the eBay listing.
-        photo_front=sale_photo_service.adopt_scan_image(payload.scan_front_path),
-        photo_back=sale_photo_service.adopt_scan_image(payload.scan_back_path),
     )
     db.add(card)
     db.commit()
     db.refresh(card)
+
+    # Keep the seller's own scan photos for the eBay listing, in plan order.
+    # Done after the insert because each photo row needs the card's id.
+    plan = photo_plan.plan_of(user)
+    scan_paths = payload.scan_paths or [
+        p for p in (payload.scan_front_path, payload.scan_back_path) if p
+    ]
+    for i, temp_path in enumerate(scan_paths[:len(plan)]):
+        key = sale_photo_service.adopt_scan_image(temp_path)
+        if key:
+            photo_plan.set_card_photo(db, card, i + 1, plan[i], key)
+    if scan_paths:
+        db.commit()
+        db.refresh(card)
 
     # Background: index the card's phash for future visual matching
     if not is_cm_only and payload.image_url:
@@ -1003,29 +1028,53 @@ def delete_card(
 
 # ── Sale photos (seller's own front / back pictures) ──────────────────────────
 
+def _slot_position(slot: str, plan: list[str]) -> int:
+    """Accept both the new 1-based slot numbers and the old front/back names.
+
+    The old names are still sent by anything that hasn't reloaded the page
+    since the deploy, and by the scan pipeline's stored front/back paths.
+    """
+    if slot == "front":
+        return 1
+    if slot == "back":
+        return 2
+    try:
+        pos = int(slot)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Ungültiger Foto-Platz.")
+    if not 1 <= pos <= len(plan):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dein Fotoplan hat {len(plan)} Aufnahmen — Platz {pos} gibt es nicht.",
+        )
+    return pos
+
+
 @router.post("/{card_id}/photo")
 async def upload_card_photo(
     card_id: int,
-    slot: str = Form(...),                # "front" | "back"
+    slot: str = Form(...),                # "1".."8", or legacy "front" | "back"
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(auth_service.get_current_user),
 ):
-    if slot not in ("front", "back"):
-        raise HTTPException(status_code=400, detail="slot must be 'front' or 'back'")
+    plan = photo_plan.plan_of(user)
+    position = _slot_position(slot, plan)
     card = _get_owned_card(card_id, user, db)
     data = await _read_limited(file, config.max_upload_bytes())
     if not data:
         raise HTTPException(status_code=400, detail="Die Datei ist leer.")
+
+    old = next(
+        (p.path for p in (card.photos or []) if (p.position or 1) == position), None
+    )
     rel = sale_photo_service.save_bytes(data, file.filename)
-    old = card.photo_front if slot == "front" else card.photo_back
-    if slot == "front":
-        card.photo_front = rel
-    else:
-        card.photo_back = rel
+    label = plan[position - 1] if position <= len(plan) else None
+    photo_plan.set_card_photo(db, card, position, label, rel)
     db.commit()
     db.refresh(card)
-    sale_photo_service.delete(old)   # free the replaced file
+    if old and old != rel:
+        sale_photo_service.delete(old)   # free the replaced file
     return _card_dict(card)
 
 
@@ -1036,15 +1085,15 @@ def delete_card_photo(
     db: Session = Depends(get_db),
     user: User = Depends(auth_service.get_current_user),
 ):
-    if slot not in ("front", "back"):
-        raise HTTPException(status_code=400, detail="slot must be 'front' or 'back'")
+    plan = photo_plan.plan_of(user)
+    position = _slot_position(slot, plan)
     card = _get_owned_card(card_id, user, db)
-    old = card.photo_front if slot == "front" else card.photo_back
-    if slot == "front":
-        card.photo_front = None
-    else:
-        card.photo_back = None
+    old = next(
+        (p.path for p in (card.photos or []) if (p.position or 1) == position), None
+    )
+    photo_plan.set_card_photo(db, card, position, None, None)
     db.commit()
+    db.refresh(card)
     sale_photo_service.delete(old)
     return _card_dict(card)
 
@@ -1063,11 +1112,20 @@ def _card_dict(c: Card) -> dict:
         "hp": c.hp,
         "image_url": c.image_url,
         "local_image_path": c.local_image_path,
-        # Seller's own photos (relative paths + public URLs) for the listing.
+        # Seller's own photos, in plan order. The front/back keys are kept for
+        # older clients that haven't reloaded since the deploy.
         "photo_front": c.photo_front,
         "photo_back": c.photo_back,
         "photo_front_url": sale_photo_service.public_url(c.photo_front),
         "photo_back_url": sale_photo_service.public_url(c.photo_back),
+        "photos": [
+            {
+                "position": p.position or 1,
+                "label": p.label,
+                "url": sale_photo_service.public_url(p.path),
+            }
+            for p in sorted(c.photos or [], key=lambda p: (p.position or 99, p.id))
+        ],
         "condition": c.condition,
         "quantity": c.quantity,
         "notes": c.notes,

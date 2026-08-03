@@ -20,17 +20,16 @@ const CONDITIONS = [
 
 const MODES = [
   {
-    id: 'single', icon: CreditCard, label: 'Einzelne Karten',
-    hint: 'Ein Foto pro Karte.', badge: '1 Foto',
+    id: 'single', icon: CreditCard, label: 'Nur ein Foto',
+    hint: 'Ein Foto pro Karte, egal was im Fotoplan steht.',
   },
   {
-    id: 'pairs', icon: Layers, label: 'Vorder- und Rückseite',
-    hint: 'Erst Vorderseite, dann Rückseite — in dieser Reihenfolge.', badge: '2 Fotos',
+    id: 'plan', icon: Layers, label: 'Nach Fotoplan',
+    hint: 'Alle Aufnahmen deines Plans pro Karte, in dieser Reihenfolge.',
   },
   {
     id: 'binder', icon: Grid3x3, label: 'Ganze Mappenseite',
     hint: 'Ein Foto der Seite, alle Karten darauf werden einzeln erkannt.',
-    badge: 'bis 24',
   },
 ]
 
@@ -60,6 +59,7 @@ const CONF_STYLE = {
 export default function UploadPage() {
   const navigate = useNavigate()
   const [mode, setMode] = useState('single')
+  const [plan, setPlan] = useState(['Vorderseite'])
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -77,7 +77,11 @@ export default function UploadPage() {
 
   useEffect(() => {
     saleApi.getSettings()
-      .then(({ data }) => { if ((data.photos_per_card || 1) >= 2) setMode('pairs') })
+      .then(({ data }) => {
+        const p = data.photo_plan?.length ? data.photo_plan : ['Vorderseite']
+        setPlan(p)
+        if (p.length >= 2) setMode('plan')
+      })
       .catch(() => {})
     cardsApi.collectionIds()
       .then(({ data }) => {
@@ -103,12 +107,10 @@ export default function UploadPage() {
     onDrop, accept: ACCEPTED, maxFiles: 50,
   })
 
-  async function changeMode(next) {
-    setMode(next)
-    // The pair setting is shared with the camera and the seller settings, so it
-    // has to be persisted — the other two modes are per-upload only.
-    try { await saleApi.updateSettings(next === 'pairs' ? 2 : 1) } catch {}
-  }
+  // The mode is a per-upload choice now; the plan itself is edited in the
+  // settings, so nothing is persisted here. Changing it used to silently
+  // rewrite the saved plan down to one or two shots.
+  function changeMode(next) { setMode(next) }
 
   function handleCameraCapture(captured) {
     onDrop(captured)
@@ -128,7 +130,8 @@ export default function UploadPage() {
 
     // A binder page is expensive to process, so send those one photo at a time;
     // pair mode must keep front+back together in the same request.
-    const groupSize = mode === 'pairs' ? 2 : 1
+    const shotsPerCard = mode === 'plan' ? plan.length : 1
+    const groupSize = shotsPerCard
     const groups = []
     for (let i = 0; i < files.length; i += groupSize) groups.push(files.slice(i, i + groupSize))
 
@@ -164,7 +167,7 @@ export default function UploadPage() {
         groups[idx].forEach((f) => fd.append('files', f))
         try {
           const { data } = await cardsApi.upload(fd, null, {
-            pairs: mode === 'pairs',
+            shots: shotsPerCard,
             binder: mode === 'binder',
           })
           grouped[idx] = data.results
@@ -204,6 +207,7 @@ export default function UploadPage() {
       cm_product_id: cand.cm_id || null,
       scan_front_path: r.local_image_path || null,
       scan_back_path: r.back_local_path || null,
+      scan_paths: [r.local_image_path, ...(r.extra_local_paths || [])].filter(Boolean),
     }
   }
 
@@ -300,10 +304,26 @@ export default function UploadPage() {
                 <span className="font-semibold text-sm">{m.label}</span>
               </div>
               <p className="text-xs text-ink-3 mt-1 leading-snug">{m.hint}</p>
+              {m.id === 'plan' && (
+                <p className="text-[11px] text-ink-4 mt-1 truncate">
+                  {plan.join(' → ')}
+                </p>
+              )}
             </button>
           )
         })}
       </div>
+
+      {mode === 'plan' && files.length > 0 && files.length % plan.length !== 0 && (
+        <div className="panel !py-3 flex items-start gap-2.5 text-xs bg-amber-50 border-amber-300">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-700" />
+          <p className="text-amber-900">
+            {files.length} Fotos lassen sich nicht in Gruppen zu {plan.length} teilen.
+            Die letzte Karte bekäme zu wenige Aufnahmen — es fehlen{' '}
+            {plan.length - (files.length % plan.length)}.
+          </p>
+        </div>
+      )}
 
       {mode === 'binder' && (
         <div className="panel !py-3 flex items-start gap-2.5 text-xs text-ink-2 bg-surface-2">
@@ -348,6 +368,12 @@ export default function UploadPage() {
           <div className="flex items-center justify-between">
             <p className="font-semibold">
               {files.length} Foto{files.length !== 1 ? 's' : ''} bereit
+              {mode === 'plan' && plan.length > 1 && (
+                <span className="text-ink-3 font-normal">
+                  {' '}· {Math.ceil(files.length / plan.length)} Karte
+                  {Math.ceil(files.length / plan.length) !== 1 ? 'n' : ''}
+                </span>
+              )}
             </p>
             <button onClick={() => setFiles([])} className="text-xs text-ink-3 hover:text-ink">
               Alle entfernen
@@ -561,7 +587,7 @@ export default function UploadPage() {
 
       {showCamera && (
         <CameraCapture
-          pairMode={mode === 'pairs'}
+          plan={mode === 'plan' ? plan : ['Foto']}
           onCapture={handleCameraCapture}
           onClose={() => setShowCamera(false)}
         />

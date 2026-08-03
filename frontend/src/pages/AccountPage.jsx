@@ -226,7 +226,11 @@ export default function AccountPage() {
 // ── eBay sale-photo settings ─────────────────────────────────────────────────
 
 function SalePhotoSettings() {
-  const [perCard, setPerCard] = useState(1)
+  const [plan, setPlan] = useState(['Vorderseite'])
+  const [savedPlan, setSavedPlan] = useState(['Vorderseite'])
+  const [suggestions, setSuggestions] = useState([])
+  const [maxSlots, setMaxSlots] = useState(8)
+  const [savingPlan, setSavingPlan] = useState(false)
   const [durable, setDurable] = useState(false)
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
@@ -236,16 +240,46 @@ function SalePhotoSettings() {
   useEffect(() => {
     Promise.all([
       saleApi.getSettings().then(({ data }) => {
-        setPerCard(data.photos_per_card || 1)
+        const p = data.photo_plan?.length ? data.photo_plan : ['Vorderseite']
+        setPlan(p)
+        setSavedPlan(p)
+        setSuggestions(data.suggested_labels || [])
+        setMaxSlots(data.max_slots || 8)
         setDurable(!!data.durable_storage)
       }).catch(() => {}),
       saleApi.listTemplates().then(({ data }) => setTemplates(data.templates || [])).catch(() => {}),
     ]).finally(() => setLoading(false))
   }, [])
 
-  async function changePerCard(n) {
-    setPerCard(n)
-    try { await saleApi.updateSettings(n) } catch { toast.error('Konnte Einstellung nicht speichern') }
+  const planDirty = JSON.stringify(plan) !== JSON.stringify(savedPlan)
+
+  function setSlot(i, value) { setPlan((p) => p.map((x, j) => (j === i ? value : x))) }
+  function addSlot(label) {
+    setPlan((p) => (p.length >= maxSlots ? p : [...p, label || `Foto ${p.length + 1}`]))
+  }
+  function removeSlot(i) { setPlan((p) => (p.length <= 1 ? p : p.filter((_, j) => j !== i))) }
+  function moveSlot(i, dir) {
+    setPlan((p) => {
+      const j = i + dir
+      if (j < 0 || j >= p.length) return p
+      const next = [...p]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next
+    })
+  }
+
+  async function savePlan() {
+    setSavingPlan(true)
+    try {
+      const { data } = await saleApi.updateSettings({ photo_plan: plan })
+      const p = data.photo_plan || plan
+      setPlan(p)
+      setSavedPlan(p)
+      toast.success('Fotoplan gespeichert')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Konnte den Plan nicht speichern')
+    }
+    setSavingPlan(false)
   }
 
   async function upload(e) {
@@ -300,25 +334,75 @@ function SalePhotoSettings() {
         </p>
       </div>
 
-      {/* Photos per card */}
+      {/* Photo plan: which shots belong to every card, in which order */}
       <div>
-        <label className="block text-xs text-ink-3 mb-1.5">Fotos pro Karte</label>
-        <div className="flex gap-2">
-          {[{ n: 1, label: 'Nur Vorderseite' }, { n: 2, label: 'Vorder- + Rückseite (2er-Pack)' }].map(({ n, label }) => (
-            <button
-              key={n}
-              onClick={() => changePerCard(n)}
-              disabled={loading}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
-                perCard === n
-                  ? 'bg-accent-soft border-pokemon-yellow/50 text-pokemon-yellow font-medium'
-                  : 'border-line text-ink-3 hover:border-ink-4 hover:text-ink'
-              }`}
-            >
-              {label}
-            </button>
+        <label className="block text-xs text-ink-3 mb-1.5">
+          Fotoplan — diese Aufnahmen machst du pro Karte, in dieser Reihenfolge
+        </label>
+        <ol className="space-y-2">
+          {plan.map((label, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <span className="w-6 h-6 shrink-0 rounded-full bg-surface-2 border border-line text-xs flex items-center justify-center font-semibold">
+                {i + 1}
+              </span>
+              <input
+                className="input flex-1" value={label} maxLength={40}
+                aria-label={`Bezeichnung für Aufnahme ${i + 1}`}
+                onChange={(e) => setSlot(i, e.target.value)}
+              />
+              <div className="flex shrink-0">
+                <button
+                  onClick={() => moveSlot(i, -1)} disabled={i === 0}
+                  className="p-1.5 rounded-lg hover:bg-surface-2 disabled:opacity-30"
+                  title="Nach oben"
+                >↑</button>
+                <button
+                  onClick={() => moveSlot(i, 1)} disabled={i === plan.length - 1}
+                  className="p-1.5 rounded-lg hover:bg-surface-2 disabled:opacity-30"
+                  title="Nach unten"
+                >↓</button>
+                <button
+                  onClick={() => removeSlot(i)} disabled={plan.length <= 1}
+                  className="p-1.5 rounded-lg hover:bg-surface-2 disabled:opacity-30 text-rose-600"
+                  title="Entfernen"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </li>
           ))}
+        </ol>
+
+        {plan.length < maxSlots && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {suggestions.filter((x) => !plan.includes(x)).slice(0, 5).map((x) => (
+              <button
+                key={x} onClick={() => addSlot(x)}
+                className="text-xs px-2 py-1 rounded-lg border border-line text-ink-3 hover:border-ink-4 hover:text-ink"
+              >+ {x}</button>
+            ))}
+            <button
+              onClick={() => addSlot('')}
+              className="text-xs px-2 py-1 rounded-lg border border-line text-ink-3 hover:border-ink-4 hover:text-ink"
+            >+ Eigene</button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 mt-3">
+          <button
+            onClick={savePlan} disabled={!planDirty || savingPlan || loading}
+            className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5"
+          >
+            {savingPlan ? <Loader className="w-3 h-3 animate-spin" /> : null}
+            Fotoplan speichern
+          </button>
+          {planDirty && <span className="text-xs text-amber-700">Nicht gespeichert</span>}
         </div>
+        <p className="text-xs text-ink-4 mt-2">
+          Beim Scannen fragt die Kamera die Aufnahmen in dieser Reihenfolge ab.
+          Bereits vorhandene Fotos behalten ihre alte Bezeichnung, wenn du den
+          Plan später änderst.
+        </p>
       </div>
 
       {/* Template photos */}

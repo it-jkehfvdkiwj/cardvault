@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Vault, Loader, Mail, Lock, User as UserIcon, KeyRound, Lock as LockIcon } from 'lucide-react'
+import { Vault, Loader, Mail, Lock, User as UserIcon, KeyRound, Lock as LockIcon, ShieldCheck, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { authApi } from '../api/client'
 
 export default function AuthPage() {
-  const { login, register } = useAuth()
+  const { login, register, verify } = useAuth()
   const [params] = useSearchParams()
   const [mode, setMode] = useState(
     params.get('mode') === 'register' ? 'register' : 'login',
@@ -19,6 +19,18 @@ export default function AuthPage() {
   // Whether registration is currently invite-only. Asked once on mount so the
   // form can say so upfront instead of rejecting a filled-in form with a 403.
   const [privateBeta, setPrivateBeta] = useState(false)
+  // Set once an account exists but its address isn't confirmed yet. While this
+  // holds an address the form shows the code field instead of the credentials.
+  const [pendingEmail, setPendingEmail] = useState(null)
+  const [code, setCode] = useState('')
+  const [mailSent, setMailSent] = useState(true)
+  const [cooldown, setCooldown] = useState(0)
+
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [cooldown])
 
   useEffect(() => {
     authApi.config()
@@ -34,14 +46,53 @@ export default function AuthPage() {
     setBusy(true)
     try {
       if (isRegister) {
-        await register(email, password, displayName, inviteCode)
-        toast.success('Konto erstellt — willkommen!')
+        const res = await register(email, password, displayName, inviteCode)
+        setPendingEmail(res.email || email)
+        setMailSent(res.mail_sent !== false)
+        setCooldown(res.resend_in || 60)
+        setCode('')
       } else {
         await login(email, password)
         toast.success('Willkommen zurück!')
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Etwas ist schiefgelaufen')
+      // A confirmed-account-required refusal is not an error the user can fix
+      // by retrying — switch straight to the code step instead of scolding them.
+      if (err.response?.status === 403 && err.response.headers?.['x-needs-verification']) {
+        setPendingEmail(email)
+        setMailSent(true)
+        setCooldown(0)
+        setCode('')
+      } else {
+        toast.error(err.response?.data?.detail || 'Etwas ist schiefgelaufen')
+      }
+    }
+    setBusy(false)
+  }
+
+  async function handleVerify(e) {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    try {
+      await verify(pendingEmail, code.trim())
+      toast.success('E-Mail bestätigt — willkommen!')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Der Code konnte nicht geprüft werden')
+    }
+    setBusy(false)
+  }
+
+  async function handleResend() {
+    if (cooldown > 0 || busy) return
+    setBusy(true)
+    try {
+      const { data } = await authApi.resendVerification(pendingEmail)
+      setCooldown(data.resend_in || 60)
+      setMailSent(true)
+      toast.success('Neuer Code verschickt')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Konnte keinen neuen Code senden')
     }
     setBusy(false)
   }
@@ -58,6 +109,62 @@ export default function AuthPage() {
           </span>
         </div>
 
+        {pendingEmail ? (
+          <div className="panel !p-5 space-y-4">
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5 text-accent-ink" />
+              <div className="min-w-0">
+                <h1 className="font-bold">E-Mail bestätigen</h1>
+                <p className="text-xs text-ink-3 mt-1">
+                  Wir haben einen 6-stelligen Code an{' '}
+                  <strong className="text-ink break-all">{pendingEmail}</strong> geschickt.
+                  Er gilt 30 Minuten.
+                </p>
+              </div>
+            </div>
+
+            {!mailSent && (
+              <p className="text-xs bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2">
+                Die E-Mail konnte nicht zugestellt werden. Prüf die Adresse — oder
+                melde dich beim Betreiber, falls sie stimmt.
+              </p>
+            )}
+
+            <form onSubmit={handleVerify} className="space-y-3">
+              <input
+                className="input text-center text-2xl tracking-[0.5em] font-bold"
+                inputMode="numeric" autoComplete="one-time-code"
+                pattern="[0-9]*" maxLength={6} required autoFocus
+                aria-label="Bestätigungscode"
+                placeholder="000000"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              />
+              <button
+                type="submit" disabled={busy || code.length !== 6}
+                className="btn-primary w-full flex items-center justify-center gap-2"
+              >
+                {busy ? <Loader className="w-4 h-4 animate-spin" /> : null}
+                Bestätigen und anmelden
+              </button>
+            </form>
+
+            <div className="flex items-center justify-between text-xs">
+              <button
+                onClick={handleResend} disabled={cooldown > 0 || busy}
+                className="text-ink-3 hover:text-ink disabled:opacity-50"
+              >
+                {cooldown > 0 ? `Neuer Code in ${cooldown} s` : 'Neuen Code senden'}
+              </button>
+              <button
+                onClick={() => { setPendingEmail(null); setCode('') }}
+                className="text-ink-3 hover:text-ink flex items-center gap-1"
+              >
+                <ArrowLeft className="w-3 h-3" /> Andere Adresse
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="panel !p-5">
           <div className="flex mb-5 rounded-xl bg-surface-2 border border-line p-1 text-sm">
             {['login', 'register'].map((m) => (
@@ -142,7 +249,9 @@ export default function AuthPage() {
             </p>
           )}
         </div>
+        )}
 
+        {!pendingEmail && (
         <p className="text-center text-xs text-ink-4 mt-4">
           {isRegister ? 'Schon ein Konto?' : 'Noch kein Konto?'}{' '}
           <button
@@ -152,6 +261,7 @@ export default function AuthPage() {
             {isRegister ? 'Jetzt anmelden' : 'Jetzt registrieren'}
           </button>
         </p>
+        )}
         <p className="text-center text-xs text-ink-4 mt-2">
           <Link to="/" className="hover:text-ink-2">← Zurück zur Startseite</Link>
         </p>

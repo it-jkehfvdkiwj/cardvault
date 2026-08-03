@@ -109,17 +109,18 @@ def compute_price(card: Card, opts: dict) -> float:
 def collect_photo_urls(card: Card, templates: list[SaleTemplatePhoto]) -> list[str]:
     """Ordered list of public image URLs for a card's listing.
 
-    Order: the seller's own front + back photos, then each fixed template photo
-    inserted at its configured position. Falls back to the stock TCG image when
-    the card has no own photo (so a listing always has at least one picture).
+    Order: the seller's own photos in photo-plan order, then each fixed template
+    photo inserted at its configured position. Falls back to the stock TCG image
+    when the card has no own photo (so a listing always has at least one
+    picture).
     """
+    from services import photo_plan
+
     urls: list[str] = []
-    front = sale_photo_service.public_url(card.photo_front)
-    back = sale_photo_service.public_url(card.photo_back)
-    if front:
-        urls.append(front)
-    if back:
-        urls.append(back)
+    for key in photo_plan.card_photo_keys(card):
+        u = sale_photo_service.public_url(key)
+        if u:
+            urls.append(u)
 
     for tpl in sorted(templates, key=lambda t: (t.position or 99, t.id)):
         u = sale_photo_service.public_url(tpl.path)
@@ -258,7 +259,9 @@ def listing_warnings(card: Card, photos: list[str], price: float, opts: dict) ->
     whole point.
     """
     out: list[str] = []
-    own_photos = sum(1 for p in (card.photo_front, card.photo_back) if p)
+    from services import photo_plan
+
+    own_photos = len(photo_plan.card_photo_keys(card))
     if not own_photos:
         out.append(
             "Kein eigenes Foto — das Angebot würde das Bild des Herstellers "
@@ -402,10 +405,12 @@ def preview_listings(
         .all()
     )
 
+    from services import photo_plan
+
     out = []
     for c in cards:
         photos = collect_photo_urls(c, templates)
-        own = sum(1 for p in (c.photo_front, c.photo_back) if p)
+        own = len(photo_plan.card_photo_keys(c))
         price = compute_price(c, opts)
         out.append({
             "id": c.id,

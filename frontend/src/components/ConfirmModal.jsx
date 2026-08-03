@@ -382,6 +382,12 @@ export default function ConfirmModal({ result, onConfirm, onSkip, ownedMap = {} 
       // Keep the scan photo as the card's own front picture for eBay listings.
       scan_front_path: result?.local_image_path || null,
       scan_back_path: result?.back_local_path || null,
+      // Every shot of the photo plan, in order — the two fields above only
+      // cover the first two and would drop the rest.
+      scan_paths: [
+        result?.local_image_path,
+        ...(result?.extra_local_paths || []),
+      ].filter(Boolean),
     })
   }, [active, localizedName, condition, quantity, isFoil, cardLanguage, onConfirm])
 

@@ -6,7 +6,7 @@ import {
   Save, ExternalLink, Euro, DollarSign, ShoppingBag, Zap, Star,
   ImagePlus, Loader,
 } from 'lucide-react'
-import { cardsApi, pricesApi, wantlistApi } from '../api/client'
+import { cardsApi, pricesApi, saleApi, wantlistApi } from '../api/client'
 import RarityBadge from '../components/RarityBadge'
 import LanguageBadge from '../components/LanguageBadge'
 import { ConditionSelect } from '../components/ConditionBadge'
@@ -186,32 +186,51 @@ function OtherPrintingsSection({ cardId }) {
 }
 
 function SalePhotos({ card, onChange }) {
-  const [busy, setBusy] = useState(null)   // 'front' | 'back' while uploading
-  const frontRef = useRef(null)
-  const backRef = useRef(null)
+  const [busy, setBusy] = useState(null)   // slot number while uploading
+  const [plan, setPlan] = useState(['Vorderseite', 'Rückseite'])
+  const refs = useRef({})
+
+  useEffect(() => {
+    saleApi.getSettings()
+      .then(({ data }) => { if (data.photo_plan?.length) setPlan(data.photo_plan) })
+      .catch(() => {})
+  }, [])
 
   async function upload(slot, file) {
     if (!file) return
     setBusy(slot)
     try {
-      const { data } = await cardsApi.uploadPhoto(card.id, slot, file)
+      const { data } = await cardsApi.uploadPhoto(card.id, String(slot), file)
       onChange(data)
-      toast.success(slot === 'front' ? 'Vorderseite gespeichert' : 'Rückseite gespeichert')
-    } catch { toast.error('Upload fehlgeschlagen') }
+      toast.success('Foto gespeichert')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Upload fehlgeschlagen')
+    }
     setBusy(null)
   }
 
   async function remove(slot) {
     try {
-      const { data } = await cardsApi.deletePhoto(card.id, slot)
+      const { data } = await cardsApi.deletePhoto(card.id, String(slot))
       onChange(data)
     } catch { toast.error('Konnte Foto nicht löschen') }
   }
 
-  const slots = [
-    { key: 'front', label: 'Vorderseite', url: card.photo_front_url, ref: frontRef },
-    { key: 'back', label: 'Rückseite', url: card.photo_back_url, ref: backRef },
-  ]
+  // One box per slot in the photo plan. A photo taken under an older, longer
+  // plan keeps its own stored label, so nothing silently vanishes when the plan
+  // is shortened — those extras are appended after the planned slots.
+  const byPosition = new Map((card.photos || []).map((p) => [p.position, p]))
+  const slots = plan.map((label, i) => ({
+    key: i + 1,
+    label: byPosition.get(i + 1)?.label || label,
+    url: byPosition.get(i + 1)?.url
+      || (i === 0 ? card.photo_front_url : i === 1 ? card.photo_back_url : null),
+  }))
+  for (const p of card.photos || []) {
+    if (p.position > plan.length) {
+      slots.push({ key: p.position, label: p.label || `Foto ${p.position}`, url: p.url })
+    }
+  }
 
   return (
     <div className="panel space-y-2">
@@ -240,7 +259,7 @@ function SalePhotos({ card, onChange }) {
               )}
             </div>
             <button
-              onClick={() => s.ref.current?.click()}
+              onClick={() => refs.current[s.key]?.click()}
               disabled={busy === s.key}
               className="btn-secondary w-full text-xs py-1 flex items-center justify-center gap-1"
             >
@@ -248,7 +267,7 @@ function SalePhotos({ card, onChange }) {
               {s.url ? 'Ändern' : s.label}
             </button>
             <input
-              ref={s.ref} type="file" accept="image/*" className="hidden"
+              ref={(el) => { refs.current[s.key] = el }} type="file" accept="image/*" className="hidden"
               onChange={(e) => { upload(s.key, e.target.files?.[0]); e.target.value = '' }}
             />
           </div>

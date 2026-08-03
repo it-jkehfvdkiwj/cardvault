@@ -66,6 +66,11 @@ def run_migrations() -> None:
             ("invite_code", "VARCHAR"),
             ("sale_intro", "TEXT"),
             ("sale_outro", "TEXT"),
+            ("sale_photo_plan", "TEXT"),
+            ("email_verified_at", "TIMESTAMP"),
+            ("verify_code_hash", "VARCHAR"),
+            ("verify_sent_at", "TIMESTAMP"),
+            ("verify_attempts", "INTEGER DEFAULT 0"),
         ],
     }
     with engine.begin() as conn:
@@ -76,6 +81,57 @@ def run_migrations() -> None:
             for col, ddl in columns:
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+
+    # ── Accounts that existed before e-mail confirmation stay confirmed ───────
+    # Without this every existing user — including the operator — would be
+    # locked out the moment this release goes live, because login now refuses
+    # accounts with no email_verified_at. They proved their address by other
+    # means (they were invited personally), so they are grandfathered in.
+    # Runs once: after the backfill no rows match the WHERE clause.
+    #
+    # Note the FRESH inspector. ``_existing_cols`` above reads the snapshot
+    # taken at the top of this function — from before the ALTER TABLE
+    # statements ran — so on an existing database it would report the column as
+    # missing and skip the backfill. That is precisely the case this guards
+    # against, so the check has to look at the database as it is now.
+    fresh = inspect(engine)
+    users_cols_now = (
+        {c["name"] for c in fresh.get_columns("users")}
+        if "users" in set(fresh.get_table_names()) else set()
+    )
+    if "email_verified_at" in users_cols_now:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE users SET email_verified_at = created_at
+                WHERE email_verified_at IS NULL AND created_at IS NOT NULL
+            """))
+            # Rows without a created_at (very old test data) get "now".
+            conn.execute(text(
+                "UPDATE users SET email_verified_at = CURRENT_TIMESTAMP "
+                "WHERE email_verified_at IS NULL"
+            ))
+
+    # ── Seed card_photos from the legacy front/back columns ───────────────────
+    # Runs once: cards written before the photo plan existed keep their photos,
+    # in the right slots, without anyone having to re-upload anything. Guarded
+    # by "is the table empty" rather than a flag, so it is safe to re-run and
+    # cannot duplicate rows. Cards photographed after the switch already write
+    # both places, so they are skipped by the NOT EXISTS clause anyway.
+    if "card_photos" in set(inspect(engine).get_table_names()) and "cards" in existing_tables:
+        card_cols = _existing_cols("cards")
+        if {"photo_front", "photo_back"} <= card_cols:
+            with engine.begin() as conn:
+                already = conn.execute(text("SELECT COUNT(*) FROM card_photos")).scalar()
+                if not already:
+                    for col, pos, label in (
+                        ("photo_front", 1, "Vorderseite"),
+                        ("photo_back", 2, "Rückseite"),
+                    ):
+                        conn.execute(text(f"""
+                            INSERT INTO card_photos (card_id, position, label, path)
+                            SELECT id, :pos, :label, {col} FROM cards
+                            WHERE {col} IS NOT NULL AND {col} <> ''
+                        """), {"pos": pos, "label": label})
 
     # ── Legacy SQLite-only migrations (pre-launch local DBs) ───────────────────
     if not IS_SQLITE:

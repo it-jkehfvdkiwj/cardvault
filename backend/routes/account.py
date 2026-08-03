@@ -106,11 +106,13 @@ def delete_account(
     # Erase *everything* belonging to the account — Art. 17 GDPR ("right to
     # erasure"), and it also keeps foreign keys from pointing at a dead user.
     # Uploaded photo files are removed first, while we still know their paths.
-    from services import sale_photo_service
+    from services import photo_plan, sale_photo_service
 
     for card in db.query(Card).filter(Card.user_id == user.id).all():
-        sale_photo_service.delete(card.photo_front)
-        sale_photo_service.delete(card.photo_back)
+        # Every photo of the card, not just the first two — a photo plan can
+        # hold up to eight, and the rest would otherwise stay in storage.
+        for key in photo_plan.card_photo_keys(card):
+            sale_photo_service.delete(key)
     for tpl in db.query(SaleTemplatePhoto).filter(SaleTemplatePhoto.user_id == user.id).all():
         sale_photo_service.delete(tpl.path)
 

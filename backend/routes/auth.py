@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 import config
 from database import get_db
 from models import User
-from services import auth_service, email_service, invite_service, plan_service
+from services import (
+    auth_service, email_service, invite_service, plan_service, verify_service,
+)
 from services.rate_limit import rate_limit, clear_failures, too_many_failures
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -25,6 +27,15 @@ class RegisterIn(BaseModel):
     password: str
     display_name: Optional[str] = None
     invite_code: Optional[str] = None
+
+
+class VerifyIn(BaseModel):
+    email: str
+    code: str
+
+
+class ResendIn(BaseModel):
+    email: str
 
 
 class LoginIn(BaseModel):
@@ -59,7 +70,10 @@ def auth_config():
     invite-only, so the form can show the code field and the right wording
     instead of letting someone fill in everything and then bounce off a 403.
     """
-    return {"private_beta": config.private_beta()}
+    return {
+        "private_beta": config.private_beta(),
+        "email_verification": True,
+    }
 
 
 @router.post(
@@ -108,6 +122,8 @@ def register(
         last_login_at=datetime.now(timezone.utc),
         invite_code=invite_service.redeem(db, used_code) if used_code else None,
     )
+    # The account starts unconfirmed and cannot log in yet — see verify().
+    code = verify_service.issue(user)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -121,7 +137,16 @@ def register(
         invite_code=user.invite_code,
         total_users=db.query(User).count(),
     )
-    return _token_response(user, db)
+    # The confirmation mail is sent inline, not in the background: if it cannot
+    # be delivered the user must find out now, while they are still looking at
+    # the form, rather than waiting for a code that will never arrive.
+    sent = email_service.send_verification_code(user.email, code)
+    return {
+        "needs_verification": True,
+        "email": user.email,
+        "mail_sent": sent,
+        "resend_in": verify_service.RESEND_COOLDOWN_SECONDS,
+    }
 
 
 @router.post(
@@ -144,6 +169,15 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
     clear_failures(email)
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Dieses Konto wurde deaktiviert.")
+    if not verify_service.is_verified(user):
+        # 403 with a machine-readable marker so the login screen can switch
+        # straight to the code field instead of showing a dead end.
+        raise HTTPException(
+            status_code=403,
+            detail="Bitte bestätige zuerst deine E-Mail-Adresse. "
+                   "Wir haben dir einen Code geschickt.",
+            headers={"X-Needs-Verification": "1"},
+        )
     # Auto-promote configured admin emails and stamp the login time.
     if auth_service.is_admin_email(email) and not user.is_admin:
         user.is_admin = True
@@ -210,3 +244,58 @@ def reset_password(payload: ResetIn, db: Session = Depends(get_db)):
     db.commit()
     clear_failures(user.email)
     return {"ok": True}
+
+
+@router.post(
+    "/verify",
+    # Six digits is a million combinations; the per-account counter in
+    # verify_service caps guesses at five, and this caps the whole endpoint.
+    dependencies=[Depends(rate_limit("verify", 20, 900))],
+)
+def verify(payload: VerifyIn, db: Session = Depends(get_db)):
+    """Confirm an address with the emailed code and log the user straight in."""
+    email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Same wording as a wrong code: this endpoint must not reveal which
+        # addresses have an account.
+        raise HTTPException(status_code=400, detail="Der Code stimmt nicht.")
+    try:
+        verify_service.check(user, payload.code)
+    except verify_service.VerifyError as exc:
+        db.commit()                       # keep the attempt counter
+        raise HTTPException(status_code=400, detail=str(exc))
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+    return _token_response(user, db)
+
+
+@router.post(
+    "/verify/resend",
+    dependencies=[Depends(rate_limit("verify_resend", 5, 900))],
+)
+def resend_verification(payload: ResendIn, db: Session = Depends(get_db)):
+    """Send a fresh code.
+
+    Always answers the same way, whether or not the address exists — otherwise
+    this is a free membership oracle. The cooldown stops it being used to bomb
+    somebody else's inbox.
+    """
+    email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+    generic = {"ok": True, "resend_in": verify_service.RESEND_COOLDOWN_SECONDS}
+    if not user or verify_service.is_verified(user):
+        return generic
+
+    wait = verify_service.seconds_until_resend(user)
+    if wait:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Bitte warte noch {wait} Sekunden, bevor du einen neuen Code anforderst.",
+            headers={"Retry-After": str(wait)},
+        )
+    code = verify_service.issue(user)
+    db.commit()
+    email_service.send_verification_code(user.email, code)
+    return generic

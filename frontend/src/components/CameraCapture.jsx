@@ -12,7 +12,16 @@ import { X, Camera, SwitchCamera, Check, Trash2, Loader } from 'lucide-react'
  * Captured frames are returned as JPEG File objects via onCapture, so they flow
  * through the exact same upload/identify pipeline as drag-and-dropped images.
  */
-export default function CameraCapture({ onCapture, onClose, pairMode = false }) {
+/**
+ * `plan` is the seller's photo plan — one label per shot, e.g.
+ * ["Vorderseite", "Rückseite", "Ecken"]. The camera announces which shot is
+ * next and labels the thumbnails, so a multi-shot plan doesn't turn into a
+ * pile of photos nobody can tell apart afterwards. A single-entry plan behaves
+ * exactly like the old one-photo mode.
+ */
+export default function CameraCapture({ onCapture, onClose, plan = ['Foto'] }) {
+  const shotPlan = plan?.length ? plan : ['Foto']
+  const planned = shotPlan.length > 1
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
@@ -195,10 +204,11 @@ export default function CameraCapture({ onCapture, onClose, pairMode = false }) 
                 )}
               </div>
 
-              {pairMode && (
+              {planned && (
                 <div className="text-center">
                   <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-accent-soft text-accent-ink border border-accent/50">
-                    2er-Pack · Nächste Aufnahme: {shots.length % 2 === 0 ? '🃏 Vorderseite' : '🔄 Rückseite'}
+                    Karte {Math.floor(shots.length / shotPlan.length) + 1} · Jetzt:{' '}
+                    {shotPlan[shots.length % shotPlan.length]}
                   </span>
                 </div>
               )}
@@ -213,9 +223,9 @@ export default function CameraCapture({ onCapture, onClose, pairMode = false }) 
                   {shots.map((s, i) => (
                     <div key={i} className="relative group">
                       <img src={s.url} alt={`Aufnahme ${i + 1}`} className="w-16 h-24 object-cover rounded-lg border border-line" />
-                      {pairMode && (
-                        <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-center text-white rounded-b-lg py-0.5">
-                          {i % 2 === 0 ? 'Vorder' : 'Rück'}
+                      {planned && (
+                        <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-center text-white rounded-b-lg py-0.5 truncate px-0.5">
+                          {shotPlan[i % shotPlan.length]}
                         </span>
                       )}
                       <button
