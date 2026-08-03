@@ -24,6 +24,21 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# tesserocr binds libtesseract in-process instead of starting the `tesseract`
+# binary once per OCR call. Measured: ~0.93 s → ~0.03 s per call, which takes a
+# card scan from ~3 s down to ~0.25 s.
+#
+# Installed on its own and deliberately allowed to fail: if no wheel exists for
+# this platform, pip would try to compile against libtesseract-dev and abort the
+# whole image build. services/ocr_service.py imports it optionally and falls
+# back to pytesseract, so a build without it is slower but fully working.
+# 2.10.0 is pinned because it is the version that was measured, and because it
+# ships a cp312 manylinux wheel — the Python version this image runs. Older
+# releases stop at cp310 and would silently compile from source (or fail), which
+# is exactly the trap this comment exists to prevent.
+RUN pip install --no-cache-dir --only-binary :all: tesserocr==2.10.0 \
+    || echo "tesserocr unavailable — falling back to the pytesseract subprocess path"
+
 # Backend source
 COPY backend/ ./backend/
 

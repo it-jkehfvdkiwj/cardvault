@@ -86,7 +86,93 @@ def _tessdata_arg() -> str:
     return ""
 
 
+# ── In-process Tesseract (optional, ~30× faster per call) ─────────────────────
+#
+# pytesseract shells out to the `tesseract` binary for every single call. That
+# costs ~0.6–0.9 s of pure process start-up and model loading *per call*,
+# regardless of image size — measured: a blank 100×30 px image took 0.77 s, and
+# `tesseract --version` alone 0.57 s. Identifying one card makes 3–4 calls, so
+# almost all of the 3 s a scan took was spent starting processes.
+#
+# tesserocr binds libtesseract directly and keeps the model in memory: the same
+# call drops to ~0.03 s. It is imported optionally and every failure falls back
+# to pytesseract, so a machine without it behaves exactly as before — the deploy
+# cannot break on this.
+#
+# Set OCR_ENGINE=pytesseract to force the old path without rebuilding.
+_TESSEROCR = None
+if os.getenv("OCR_ENGINE", "auto").strip().lower() != "pytesseract":
+    try:
+        import tesserocr as _TESSEROCR
+    except Exception:                      # not installed, or wrong ABI
+        _TESSEROCR = None
+
+_api_local = threading.local()
+
+
+def _tessdata_path() -> str | None:
+    """Directory holding eng.traineddata, for the in-process API.
+
+    tesserocr needs a path, not pytesseract's command-line flag. The bundled
+    project dir wins when it is actually populated; otherwise we look where the
+    Debian packages put it (the image installs tesseract-ocr-eng / -deu).
+    """
+    candidates = [
+        TESSDATA_DIR,
+        os.getenv("TESSDATA_PREFIX", ""),
+        "/usr/share/tesseract-ocr/5/tessdata",
+        "/usr/share/tesseract-ocr/4.00/tessdata",
+        "/usr/share/tessdata",
+    ]
+    for c in candidates:
+        if c and os.path.isfile(os.path.join(c, "eng.traineddata")):
+            return c
+    return None
+
+
+def _fast_api(lang: str):
+    """One API instance per thread and language.
+
+    ``PyTessBaseAPI`` is **not** thread-safe and the scan pipeline runs several
+    OCR jobs in parallel worker threads, so a shared instance would corrupt
+    results under load. Thread-local instances cost ~0.4 s to create once and
+    are then reused for every card that thread handles.
+    """
+    cache = getattr(_api_local, "apis", None)
+    if cache is None:
+        cache = _api_local.apis = {}
+    api = cache.get(lang)
+    if api is None:
+        path = _tessdata_path()
+        if not path:
+            raise RuntimeError("no tessdata directory found")
+        api = _TESSEROCR.PyTessBaseAPI(path=path, lang=lang)
+        cache[lang] = api
+    return api
+
+
+def _ocr_in_process(crop: np.ndarray, *, lang: str, psm: int, whitelist: str | None) -> str:
+    from PIL import Image
+
+    api = _fast_api(lang)
+    # Plain int: tesserocr's PSM enum members are not constructible from a
+    # number, and SetPageSegMode accepts the raw value anyway.
+    api.SetPageSegMode(psm)
+    # Always assign the whitelist, even when empty: the variable is sticky on a
+    # reused API object, so skipping the reset would silently restrict every
+    # later call on this thread to digits and slashes.
+    api.SetVariable("tessedit_char_whitelist", whitelist or "")
+    api.SetImage(Image.fromarray(crop))
+    return api.GetUTF8Text()
+
+
 def _ocr(crop: np.ndarray, *, lang: str, psm: int, whitelist: str | None = None) -> str:
+    if _TESSEROCR is not None:
+        try:
+            return _ocr_in_process(crop, lang=lang, psm=psm, whitelist=whitelist)
+        except Exception:
+            pass                            # fall through to the subprocess path
+
     config = f"{_tessdata_arg()}--oem 3 --psm {psm}"
     if whitelist is not None:
         config += f" -c tessedit_char_whitelist={whitelist}"
@@ -350,14 +436,15 @@ def read_card_bottom(
 ) -> tuple[str | None, str | None, str | None, np.ndarray]:
     """
     Orientation-robust bottom read. The auto-crop may leave a card upside-down,
-    so we probe both orientations **in parallel threads** (Tesseract runs as a
-    subprocess, so this is true parallelism) and share a stop flag: the moment
-    one orientation reads a collector number, the other aborts between OCR
-    calls. This roughly halves worst-case latency versus the old sequential
-    probe without meaningfully increasing work in the common case. Returns
+    so both orientations are probed, upright first. Returns
     ``(code, number, total, correctly_oriented_image)`` — the returned image is
     flipped to the orientation that produced a hit, so downstream name OCR and
     perceptual hashing operate on an upright card.
+
+    With the pytesseract subprocess path the two orientations run in parallel
+    threads sharing a stop flag, because there each OCR call costs ~0.9 s and
+    hiding the second orientation behind the first was worth two threads. See
+    the comment at the branch below for why the in-process engine does not.
 
     ``fast`` skips the final corner fan-out. That fan-out is what rescues a
     hard-to-read single card, but it is also by far the most expensive step —
@@ -372,18 +459,28 @@ def read_card_bottom(
     flipped = cv2.rotate(cv_img, cv2.ROTATE_180)
     stop = threading.Event()
 
-    # In fast mode the two orientations run sequentially. The parallel probe
-    # halves latency for ONE card, but under bulk scanning every job already
-    # owns a worker thread — spawning two more per card oversubscribes the CPU
-    # and makes the whole page slower than doing it plainly.
-    if fast:
-        up_texts, c, n, t = _probe_orientation(cv_img, stop, fast=True)
+    # Sequential whenever it is cheap to be. The parallel probe exists to hide
+    # the cost of a second orientation, which mattered when one OCR call took
+    # ~0.9 s. With the in-process engine a call is ~0.03 s, so the parallelism
+    # buys almost nothing and costs plenty: each pool thread is short-lived and
+    # would build its own Tesseract instance, and those thread-local instances
+    # are never reclaimed. Under bulk scanning it also oversubscribes the CPU,
+    # since every card already owns a worker thread.
+    if fast or _TESSEROCR is not None:
+        # Note `fast=fast`, not `fast=True`: going sequential is about *how* the
+        # two orientations are scheduled. How hard we try within each one is a
+        # separate decision, and a single-card scan should still try everything.
+        up_texts, c, n, t = _probe_orientation(cv_img, stop, fast=fast)
         if n:
             return c, n, t, cv_img
-        _, c2, n2, t2 = _probe_orientation(flipped, stop, fast=True)
+        _, c2, n2, t2 = _probe_orientation(flipped, stop, fast=fast)
         if n2:
             return c2, n2, t2, flipped
-        return None, None, None, cv_img
+        if fast:
+            return None, None, None, cv_img
+        # Full effort: the corner fan-out is still worth it for one card.
+        c, n, t = _resolve_bottom(up_texts, cv_img)
+        return c, n, t, cv_img
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         fut_up = ex.submit(_probe_orientation, cv_img, stop)
