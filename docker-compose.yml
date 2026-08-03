@@ -25,12 +25,16 @@ services:
       # Named volumes so uploads and the SQLite file survive a rebuild.
       - uploads_data:/app/backend/uploads
       - db_data:/app/backend/data
+      # The catalogue's card artwork. Its own volume because a rebuild would
+      # otherwise discard a download that takes hours.
+      - catalog_images:/app/backend/catalog_images
     environment:
       - APP_ENV=production
       # SQLite is fine for a few hundred users. Point DATABASE_URL at Postgres
       # (and uncomment the db service below) when you outgrow it.
       - "DATABASE_URL=${DATABASE_URL:-sqlite:////app/backend/data/cardvault.db}"
       - UPLOAD_DIR=/app/backend/uploads
+      - CATALOG_IMAGE_DIR=/app/backend/catalog_images
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-25}
       #
       # Jeder Eintrag, in den ein Wert aus der .env eingesetzt wird, steht in
@@ -97,4 +101,5 @@ services:
 volumes:
   uploads_data:
   db_data:
+  catalog_images:
   # pg_data:

@@ -191,6 +191,43 @@ class CardPhoto(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class CatalogCard(Base):
+    """A local copy of every Pokémon card the TCG API knows about.
+
+    Why this exists: the app used to need a network round-trip to identify any
+    card, which made scanning depend on a third-party service that is being
+    wound down in favour of a paid successor. With the catalogue imported, a
+    scan is answered from this table — instantly, offline, and unaffected by
+    whatever happens to the API.
+
+    ``number_int`` and ``printed_total`` are stored separately from the printed
+    strings because that pair ("21" of "197") is exactly what OCR produces and
+    what the lookup searches on; keeping them as integers makes that an index
+    hit instead of a scan over 20,000 rows.
+
+    ``local_image`` is a filename under the catalogue image dir, set once the
+    picture has been downloaded. NULL means "still served from the API's CDN".
+    """
+    __tablename__ = "catalog_cards"
+
+    id = Column(String, primary_key=True)              # e.g. "sv3-21"
+    name = Column(String, index=True, nullable=False)
+    set_id = Column(String, index=True)
+    set_name = Column(String)
+    set_series = Column(String)
+    printed_total = Column(Integer, index=True)
+    number = Column(String)                            # as printed ("21", "TG05")
+    number_int = Column(Integer, index=True)           # numeric part, for lookup
+    rarity = Column(String)
+    types = Column(String)                             # comma separated
+    hp = Column(String)
+    national_dex = Column(String)                      # comma separated
+    image_small = Column(String)
+    image_large = Column(String)
+    local_image = Column(String)
+    updated_at = Column(DateTime, server_default=func.now())
+
+
 class CollectionSnapshot(Base):
     """Daily snapshot of a user's collection value — powers the value-history
     chart (portfolio view). One row per user per day, upserted whenever stats

@@ -25,6 +25,9 @@ from sqlalchemy.orm import Session
 from models import ApiCache
 
 TCG_API_BASE = "https://api.pokemontcg.io/v2"
+
+import logging
+logger = logging.getLogger("cardvault.tcg")
 CACHE_TTL_HOURS = 24
 PAGE_SIZE = 20
 
@@ -318,15 +321,36 @@ async def search_cards(
     return data, has_more
 
 
+def _catalog():
+    """Imported lazily to keep the import graph acyclic."""
+    from services import catalog_service
+    return catalog_service
+
+
 async def get_card_by_id(
     card_id: str, db: Session, max_age_hours: int | None = None
 ) -> dict | None:
     """Fetch one card. Pass ``max_age_hours`` when the *prices* must be recent —
-    identification can happily use the long-lived cache entry."""
+    identification can happily use the long-lived cache entry.
+
+    Checks the local catalogue first, but **only when prices are not required**:
+    the catalogue deliberately stores no prices, so a price refresh has to go
+    to the network.
+    """
     cache_key = f"card:{card_id}"
     cached = _cache_get(db, cache_key, max_age_hours)
     if cached:
         return cached
+
+    if max_age_hours is None:
+        try:
+            cat = _catalog()
+            if cat.is_populated(db):
+                hit = cat.get_by_id(db, card_id)
+                if hit:
+                    return hit
+        except Exception as exc:       # never let the catalogue break a lookup
+            logger.debug("Katalog-Zugriff fehlgeschlagen: %s", exc)
 
     resp = await _client().get(
         f"{TCG_API_BASE}/cards/{card_id}",
@@ -498,6 +522,17 @@ async def find_by_number_total(
     """
     if not number:
         return []
+
+    # Local catalogue first: this is the single most-used lookup during a scan,
+    # and answering it from disk removes both the latency and the dependency.
+    try:
+        cat = _catalog()
+        if cat.is_populated(db):
+            local = cat.find_by_number_total(db, number, total)
+            if local:
+                return rank_candidates(name_hint, local) if name_hint else local
+    except Exception as exc:
+        logger.debug("Katalog-Nummernsuche fehlgeschlagen: %s", exc)
 
     cache_key = f"numtotal:{number}:{total}"
     cached = _cache_get(db, cache_key)

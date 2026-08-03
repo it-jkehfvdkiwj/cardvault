@@ -228,6 +228,8 @@ async def security_headers(request, call_next):
         response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
     elif path.startswith("/uploads/"):
         response.headers.setdefault("Cache-Control", "public, max-age=86400")
+    elif path.startswith("/catalog-images/"):
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
     elif path in ("/", "/index.html") or response.headers.get("content-type", "").startswith("text/html"):
         response.headers["Cache-Control"] = "no-cache"
 
@@ -260,6 +262,17 @@ async def limit_body_size(request, call_next):
 upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
 upload_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(upload_dir)), name="uploads")
+
+# Locally stored catalogue pictures. Serving them ourselves is the whole point
+# of importing them: the collection keeps its artwork even if the TCG API's CDN
+# goes away. Card artwork never changes, so it may be cached hard.
+catalog_dir = Path(os.getenv("CATALOG_IMAGE_DIR", "backend/catalog_images"))
+catalog_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/catalog-images",
+    StaticFiles(directory=str(catalog_dir)),
+    name="catalog-images",
+)
 
 
 # ── Root-level routes ─────────────────────────────────────────────────────────
@@ -317,7 +330,7 @@ if _frontend_dist.exists():
            returning the HTML shell, which would turn a typo'd endpoint into a
            confusing "Unexpected token '<'" error in the browser.
         """
-        if full_path.startswith(("api/", "uploads/")):
+        if full_path.startswith(("api/", "uploads/", "catalog-images/")):
             return JSONResponse(status_code=404, content={"detail": "Not found"})
 
         try:
