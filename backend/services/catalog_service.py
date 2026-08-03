@@ -27,6 +27,7 @@ import logging
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 
 import httpx
@@ -46,7 +47,12 @@ SELECT_FIELDS = (
     "id,name,set,number,rarity,types,hp,images,nationalPokedexNumbers"
 )
 
-IMAGE_DIR = Path(os.getenv("CATALOG_IMAGE_DIR", "backend/catalog_images"))
+# Anchored to this file rather than the working directory: the container runs
+# with cwd=/app/backend, so a relative "backend/catalog_images" resolved to
+# /app/backend/backend/catalog_images. Compose sets the variable explicitly in
+# production, but the default has to be right for local runs too.
+_DEFAULT_IMAGE_DIR = Path(__file__).resolve().parent.parent / "catalog_images"
+IMAGE_DIR = Path(os.getenv("CATALOG_IMAGE_DIR") or _DEFAULT_IMAGE_DIR)
 # Refuse to start an image download that would leave the disk this empty. The
 # server also holds the database, the uploads and the Docker images; filling it
 # would take the whole site down, which is a far worse outcome than a missing
@@ -94,6 +100,53 @@ def _row_from_api(card: dict) -> dict:
     }
 
 
+MAX_RETRIES = 5
+RETRY_BASE_DELAY = 2.0          # seconds; doubles per attempt
+
+
+def _fetch_page(client: httpx.Client, page: int, page_size: int) -> dict:
+    """One page, retried with a growing delay.
+
+    The API returns intermittent 500s — a whole import died on page 1 with one,
+    while the identical request succeeded moments later. It is a service being
+    wound down, so occasional failure is the normal case, not the exception.
+    Waiting and asking again turns a fatal error into a pause.
+
+    The page size stays fixed on purpose. Shrinking it on failure looks helpful
+    and silently loses cards: page numbers are relative to the size, so fetching
+    page 1 at 125 and then page 2 at 250 skips items 126–250 entirely.
+    """
+    delay = RETRY_BASE_DELAY
+    last: Exception | None = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            resp = client.get(
+                f"{API_BASE}/cards",
+                params={"page": page, "pageSize": page_size, "select": SELECT_FIELDS},
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as exc:
+            last = exc
+            status = exc.response.status_code
+            if status < 500 and status != 429:
+                raise            # a real client error won't fix itself
+            logger.warning(
+                "Seite %d: HTTP %d (Versuch %d/%d) — warte %.0fs",
+                page, status, attempt, MAX_RETRIES, delay,
+            )
+        except httpx.HTTPError as exc:
+            last = exc
+            logger.warning(
+                "Seite %d: %s (Versuch %d/%d) — warte %.0fs",
+                page, type(exc).__name__, attempt, MAX_RETRIES, delay,
+            )
+        if attempt < MAX_RETRIES:
+            time.sleep(delay)
+            delay *= 2
+    raise last if last else RuntimeError("Abruf fehlgeschlagen")
+
+
 def import_all(db: Session, progress=None, page_limit: int | None = None) -> dict:
     """Pull the whole catalogue, page by page, upserting as it goes.
 
@@ -106,12 +159,7 @@ def import_all(db: Session, progress=None, page_limit: int | None = None) -> dic
     total = None
     with httpx.Client(timeout=60, headers=_headers()) as client:
         while True:
-            resp = client.get(
-                f"{API_BASE}/cards",
-                params={"page": page, "pageSize": PAGE_SIZE, "select": SELECT_FIELDS},
-            )
-            resp.raise_for_status()
-            payload = resp.json()
+            payload = _fetch_page(client, page, PAGE_SIZE)
             cards = payload.get("data") or []
             total = payload.get("totalCount", total)
             if not cards:
@@ -139,7 +187,9 @@ def import_all(db: Session, progress=None, page_limit: int | None = None) -> dic
 
             if progress:
                 progress(page, imported + updated, total)
-            if len(cards) < PAGE_SIZE:
+            # Not compared against PAGE_SIZE: a retry may have shrunk the
+            # page, and a short page would then be mistaken for the end.
+            if len(cards) < payload.get("pageSize", PAGE_SIZE):
                 break
             page += 1
             if page_limit and page > page_limit:

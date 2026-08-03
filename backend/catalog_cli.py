@@ -1,10 +1,14 @@
 """
 Command line for the local card catalogue.
 
-    docker compose exec backend python backend/catalog_cli.py status
-    docker compose exec backend python backend/catalog_cli.py import
-    docker compose exec backend python backend/catalog_cli.py images --kind small
-    docker compose exec backend python backend/catalog_cli.py images --kind large --limit 500
+    docker compose exec backend python catalog_cli.py status
+    docker compose exec backend python catalog_cli.py import
+    docker compose exec backend python catalog_cli.py images --kind small
+    docker compose exec backend python catalog_cli.py images --kind large --limit 500
+
+Note the path: the image sets WORKDIR=/app/backend, so the script is addressed
+without a "backend/" prefix — "backend/catalog_cli.py" resolves to
+/app/backend/backend/catalog_cli.py and fails.
 
 `import` is safe to re-run and safe to interrupt: pages are committed as they
 arrive and rows are matched by id, so a second run updates instead of

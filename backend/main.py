@@ -266,7 +266,9 @@ app.mount("/uploads", StaticFiles(directory=str(upload_dir)), name="uploads")
 # Locally stored catalogue pictures. Serving them ourselves is the whole point
 # of importing them: the collection keeps its artwork even if the TCG API's CDN
 # goes away. Card artwork never changes, so it may be cached hard.
-catalog_dir = Path(os.getenv("CATALOG_IMAGE_DIR", "backend/catalog_images"))
+catalog_dir = Path(
+    os.getenv("CATALOG_IMAGE_DIR") or Path(__file__).resolve().parent / "catalog_images"
+)
 catalog_dir.mkdir(parents=True, exist_ok=True)
 app.mount(
     "/catalog-images",
