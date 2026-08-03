@@ -12,6 +12,17 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
+# Logging is configured HERE, before any project module is imported. It used to
+# sit further down, after the route imports — which meant every log line written
+# while a module was being imported went nowhere: with no handler attached yet,
+# anything below WARNING is dropped silently. That is how the OCR engine's
+# start-up line vanished, and it would have swallowed any future import-time
+# warning just as quietly.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+)
+
 import config
 
 # Refuses to boot in production with a default JWT secret or wildcard CORS.
@@ -55,11 +66,8 @@ app.add_middleware(
 # smaller on the wire, which makes the app feel much snappier on mobile data.
 app.add_middleware(GZipMiddleware, minimum_size=1500)
 
-# ── Logging & unhandled errors ────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
-)
+# ── Unhandled errors ──────────────────────────────────────────────────────────
+# (logging itself is configured at the very top, before the imports)
 logger = logging.getLogger("cardvault")
 
 
