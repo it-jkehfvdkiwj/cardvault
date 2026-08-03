@@ -49,7 +49,8 @@ COPY --from=frontend-build /frontend/dist ./frontend/dist
 # populates an empty named volume it copies the image directory's ownership, so
 # creating them here is what lets the unprivileged user write to the mounted
 # uploads/database volumes.
-RUN mkdir -p backend/uploads backend/uploads/sale backend/data backend/tessdata
+RUN mkdir -p backend/uploads backend/uploads/sale backend/data backend/tessdata \
+             backend/catalog_images
 
 # Run as an unprivileged user: if anything in the app is ever exploited, it
 # can't write outside its own data directory or install packages.

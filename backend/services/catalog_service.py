@@ -104,14 +104,43 @@ MAX_RETRIES = 5
 RETRY_BASE_DELAY = 2.0          # seconds; doubles per attempt
 
 
+def _get_with_retry(client: httpx.Client, url: str, params: dict, label: str) -> dict:
+    """GET with a growing delay on 5xx/429. Everything talking to this API goes
+    through here — the set list included. Leaving that one call unprotected is
+    exactly how a whole import died on its very first request."""
+    delay = RETRY_BASE_DELAY
+    last: Exception | None = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            resp = client.get(url, params=params)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as exc:
+            last = exc
+            status = exc.response.status_code
+            if status < 500 and status != 429:
+                raise
+            logger.warning("%s: HTTP %d (Versuch %d/%d) — warte %.0fs",
+                           label, status, attempt, MAX_RETRIES, delay)
+        except httpx.HTTPError as exc:
+            last = exc
+            logger.warning("%s: %s (Versuch %d/%d) — warte %.0fs",
+                           label, type(exc).__name__, attempt, MAX_RETRIES, delay)
+        if attempt < MAX_RETRIES:
+            time.sleep(delay)
+            delay *= 2
+    raise last if last else RuntimeError(f"{label} fehlgeschlagen")
+
+
 def _fetch_sets(client: httpx.Client) -> list[dict]:
     """All set ids, newest first, so the useful ones land first."""
-    resp = client.get(
+    payload = _get_with_retry(
+        client,
         f"{API_BASE}/sets",
-        params={"pageSize": 250, "select": "id,name,series,printedTotal,releaseDate"},
+        {"pageSize": 250, "select": "id,name,series,printedTotal,releaseDate"},
+        "Set-Liste",
     )
-    resp.raise_for_status()
-    sets = resp.json().get("data") or []
+    sets = payload.get("data") or []
     sets.sort(key=lambda s: s.get("releaseDate") or "", reverse=True)
     return sets
 
@@ -119,46 +148,17 @@ def _fetch_sets(client: httpx.Client) -> list[dict]:
 def _fetch_page(
     client: httpx.Client, page: int, page_size: int, query: str | None = None
 ) -> dict:
-    """One page, retried with a growing delay.
-
-    The API returns intermittent 500s — a whole import died on page 1 with one,
-    while the identical request succeeded moments later. It is a service being
-    wound down, so occasional failure is the normal case, not the exception.
-    Waiting and asking again turns a fatal error into a pause.
+    """One page of cards, retried.
 
     The page size stays fixed on purpose. Shrinking it on failure looks helpful
     and silently loses cards: page numbers are relative to the size, so fetching
-    page 1 at 125 and then page 2 at 250 skips items 126–250 entirely.
+    page 1 at 125 and then page 2 at 250 skips items 126-250 entirely.
     """
-    delay = RETRY_BASE_DELAY
-    last: Exception | None = None
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            params = {"page": page, "pageSize": page_size, "select": SELECT_FIELDS}
-            if query:
-                params["q"] = query
-            resp = client.get(f"{API_BASE}/cards", params=params)
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPStatusError as exc:
-            last = exc
-            status = exc.response.status_code
-            if status < 500 and status != 429:
-                raise            # a real client error won't fix itself
-            logger.warning(
-                "Seite %d: HTTP %d (Versuch %d/%d) — warte %.0fs",
-                page, status, attempt, MAX_RETRIES, delay,
-            )
-        except httpx.HTTPError as exc:
-            last = exc
-            logger.warning(
-                "Seite %d: %s (Versuch %d/%d) — warte %.0fs",
-                page, type(exc).__name__, attempt, MAX_RETRIES, delay,
-            )
-        if attempt < MAX_RETRIES:
-            time.sleep(delay)
-            delay *= 2
-    raise last if last else RuntimeError("Abruf fehlgeschlagen")
+    params = {"page": page, "pageSize": page_size, "select": SELECT_FIELDS}
+    if query:
+        params["q"] = query
+    return _get_with_retry(client, f"{API_BASE}/cards", params,
+                           f"Seite {page}" + (f" ({query})" if query else ""))
 
 
 def import_all(db: Session, progress=None, page_limit: int | None = None) -> dict:
@@ -382,6 +382,7 @@ def download_images(
 
     done = failed = 0
     stopped_for_space = False
+    errors: list[str] = []
     with httpx.Client(timeout=60, follow_redirects=True) as client:
         for i, row in enumerate(rows, 1):
             if i % 25 == 1 and free_bytes() < MIN_FREE_BYTES:
@@ -404,7 +405,13 @@ def download_images(
                 done += 1
             except Exception as exc:
                 failed += 1
-                logger.debug("Bild fehlgeschlagen %s: %s", row.id, exc)
+                # The first few reasons are reported, not hidden on DEBUG. A run
+                # that reported "200 fehlgeschlagen" and nothing else was
+                # impossible to act on — the cause has to travel with the count.
+                if len(errors) < 3:
+                    errors.append(f"{row.id}: {type(exc).__name__}: {exc}")
+                    logger.warning("Bild fehlgeschlagen %s: %s: %s",
+                                   row.id, type(exc).__name__, exc)
             if i % 50 == 0:
                 db.commit()
                 if progress:
@@ -418,4 +425,5 @@ def download_images(
         "remaining": max(0, len(rows) - done - failed),
         "bytes_on_disk": used,
         "stopped_for_space": stopped_for_space,
+        "errors": errors,
     }

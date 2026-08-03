@@ -108,6 +108,8 @@ def cmd_images(db, args) -> int:
         f"\n{res['downloaded']} geladen, {res['failed']} fehlgeschlagen, "
         f"{res['remaining']} offen. Belegt: {_human(res['bytes_on_disk'])}"
     )
+    for e in res.get("errors", []):
+        print(f"  Grund: {e}")
     if res["stopped_for_space"]:
         print("Vorzeitig gestoppt, weil der Platz knapp wurde.")
     return 0
