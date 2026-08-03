@@ -217,13 +217,57 @@ def _strip_zeros(num_raw: str) -> str:
 
 # ── Set code + collector number ───────────────────────────────────────────────
 
+# Language markers printed *inside the set-code box* on non-English cards. A
+# German Obsidian Flames card reads "OBF DE", and OCR fuses that into "OBFDE",
+# which matches no known set code — so every German card lost its set code and
+# fell back to the slower, less certain number-only lookup. The same applies to
+# the other European printings.
+_LANG_SUFFIXES = ("DE", "FR", "IT", "ES", "PT", "NL", "PL", "RU", "JP", "KO")
+
+
+def _code_candidates(token: str) -> list[str]:
+    """The token itself, plus the reading with a trailing language marker removed.
+
+    Both are offered because a few real set codes end in those two letters (an
+    "…DE" code would otherwise be destroyed); validation against the known-code
+    map decides which one survives.
+    """
+    out = [token]
+    for suffix in _LANG_SUFFIXES:
+        if len(token) > len(suffix) + 1 and token.endswith(suffix):
+            out.append(token[: -len(suffix)])
+    return out
+
+
+# The copyright line "©2023 Pokémon/Nintendo/Creatures/GAME FREAK" is printed on
+# every single card, directly under the set code. When OCR splits "Creatures"
+# into "Cre atures" — which it does — the fragment "CRE" is a *real* set code
+# (Chilling Reign) and gets voted as this card's set. Confirmed reproducible.
+# These words are removed before any code is extracted; none of them is a
+# legitimate set code, so nothing is lost.
+_PUBLISHER_RE = re.compile(
+    r"CRE\s*ATURES|NINTENDO|GAME\s*FREAK|POK[EÉ]?\s*MON", re.IGNORECASE
+)
+
+# …and the same line again, this time cut off by a crop boundary: what remains
+# is "Nintendo/Cre", where the trailing fragment is still a valid set code. A
+# set code is never printed after a slash, while the copyright line is nothing
+# but slash-separated words — so dropping letters that follow a slash removes
+# the fragments without touching anything real. Collector numbers ("021/197")
+# are digits and stay untouched.
+_SLASH_WORD_RE = re.compile(r"/\s*[A-Za-zÉé]+")
+
+
 def _vote(texts: list[str]) -> tuple[str | None, str | None, str | None]:
     """From OCR snippets, extract the most-voted known set code, collector
     number and set total. Returns (code, number, total)."""
     code_votes: Counter[str] = Counter()
     number_votes: Counter[tuple[str, str | None]] = Counter()
     for raw in texts:
+        # Numbers are voted from the untouched text (the publisher filters would
+        # eat "021/197"); only code extraction uses the cleaned copy.
         up = raw.upper()
+        clean = _SLASH_WORD_RE.sub(" ", _PUBLISHER_RE.sub(" ", up))
         for m in _NUM_RE.finditer(up):
             num, total = m.group(1), m.group(2)
             if not num.isdigit() or not total.isdigit():
@@ -238,13 +282,16 @@ def _vote(texts: list[str]) -> tuple[str | None, str | None, str | None]:
             if ni > ti * 4:
                 continue
             number_votes[(_strip_zeros(num), _strip_zeros(total))] += 1
-        for token in re.findall(r"[A-Z]{2,6}", up):
-            if token in _KNOWN_CODES:
-                code_votes[token] += 1
-        for m in _SET_NUM_RE.finditer(up):
-            tok = m.group(1).upper()
-            if tok in _KNOWN_CODES:
-                code_votes[tok] += 2  # contiguous "CODE NNN/TTT" = high signal
+        for token in re.findall(r"[A-Z]{2,8}", clean):
+            for cand in _code_candidates(token):
+                if cand in _KNOWN_CODES:
+                    code_votes[cand] += 1
+                    break
+        for m in _SET_NUM_RE.finditer(clean):
+            for cand in _code_candidates(m.group(1).upper()):
+                if cand in _KNOWN_CODES:
+                    code_votes[cand] += 2  # contiguous "CODE NNN/TTT" = high signal
+                    break
     best_code = code_votes.most_common(1)[0][0] if code_votes else None
     if number_votes:
         best_number, best_total = number_votes.most_common(1)[0][0]
@@ -415,6 +462,27 @@ def _resolve_bottom(
     return (code or None), (number or None), (total or None)
 
 
+def _code_focus_texts(cv_img: np.ndarray) -> list[str]:
+    """Read just the set-code box, bottom-left, enlarged.
+
+    The code sits in a small box next to the collector number and is only a few
+    pixels tall once the full-width bottom strip has been normalised — which is
+    why the number reads fine while the code does not. Cropping to the corner
+    first gives those glyphs far more resolution.
+
+    On a German card the box prints as "OBF DE": the language marker shares the
+    box with the code, so what comes out is "OBFDE" or, when the tiny marker is
+    mangled, "OBFO". _code_candidates() strips the marker; the psm 11 pass is
+    what most reliably separates the box from its neighbours.
+    """
+    h, w = cv_img.shape[:2]
+    region = cv_img[int(h * 0.90):int(h * 0.99), : int(w * 0.55)]
+    if region.size == 0:
+        return []
+    _, otsu = _prep(region, target_w=1200)
+    return [_ocr(otsu, lang="eng", psm=11), _ocr(otsu, lang="eng", psm=6)]
+
+
 def _probe_orientation(
     img: np.ndarray, stop: threading.Event, fast: bool = False,
 ) -> tuple[list[str], str | None, str | None, str | None]:
@@ -427,6 +495,14 @@ def _probe_orientation(
     # low-yield grayscale retries inside the cheap pass are dropped.
     if not n and not stop.is_set():
         texts += _number_focus_texts(img, stop)
+        c, n, t = _vote(texts)
+    # Number but no set code: worth two more reads of the corner. Runs *after*
+    # the number pass on purpose — checking earlier meant that on any card whose
+    # number only turned up in that pass, the code lookup was skipped entirely.
+    # The set code turns "021/197" into one specific card instead of a list of
+    # candidates from every set that ever printed 197 cards.
+    if n and not c and not stop.is_set():
+        texts += _code_focus_texts(img)
         c, n, t = _vote(texts)
     return texts, c, n, t
 
