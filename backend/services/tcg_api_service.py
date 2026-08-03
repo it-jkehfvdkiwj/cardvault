@@ -179,14 +179,45 @@ def _get_headers() -> dict:
     return {"X-Api-Key": key} if key else {}
 
 
-def _cache_get(db: Session, key: str):
+# How long each kind of cached answer stays valid.
+#
+# Everything used to expire after 24 hours, prices and card identity alike. But
+# a card's name, set, number, rarity and artwork never change — re-fetching them
+# daily burned the request quota for nothing and made the app fail whenever the
+# API was slow, rate-limited or down. Identity data is now kept for months, so a
+# card that has been scanned once is identified from the local database forever
+# after; only price-bearing lookups keep a short life.
+#
+# This also decides how badly it would hurt if the API disappeared: with a long
+# identity cache, every card ever scanned stays identifiable offline.
+_LONG_TTL_PREFIXES = ("card:", "sets:", "numtotal:", "pokename:", "variants:")
+_LONG_TTL_HOURS = int(os.getenv("CARD_CACHE_TTL_HOURS", str(24 * 180)))
+
+
+def _ttl_hours(key: str) -> int:
+    return _LONG_TTL_HOURS if key.startswith(_LONG_TTL_PREFIXES) else CACHE_TTL_HOURS
+
+
+def _cache_get(db: Session, key: str, max_age_hours: int | None = None):
+    """Read a cached answer. ``max_age_hours`` overrides the per-key lifetime.
+
+    The override exists for the price refresh: a cached card carries its price
+    block with it, so serving a months-old entry there would quietly freeze
+    every price in the collection. Identification is happy with an old entry —
+    prices are not.
+    """
     entry = db.query(ApiCache).filter(ApiCache.cache_key == key).first()
     if not entry:
         return None
-    expiry = entry.cached_at + timedelta(hours=CACHE_TTL_HOURS)
+    ttl = _ttl_hours(key) if max_age_hours is None else max_age_hours
+    expiry = entry.cached_at + timedelta(hours=ttl)
     if datetime.utcnow() > expiry:
-        db.delete(entry)
-        db.commit()
+        # Only drop the row when it is stale by its *own* rule. A price refresh
+        # asking for something fresher must not throw away an entry that is
+        # still perfectly good for identifying the card.
+        if datetime.utcnow() > entry.cached_at + timedelta(hours=_ttl_hours(key)):
+            db.delete(entry)
+            db.commit()
         return None
     return json.loads(entry.response_json)
 
@@ -287,9 +318,13 @@ async def search_cards(
     return data, has_more
 
 
-async def get_card_by_id(card_id: str, db: Session) -> dict | None:
+async def get_card_by_id(
+    card_id: str, db: Session, max_age_hours: int | None = None
+) -> dict | None:
+    """Fetch one card. Pass ``max_age_hours`` when the *prices* must be recent —
+    identification can happily use the long-lived cache entry."""
     cache_key = f"card:{card_id}"
-    cached = _cache_get(db, cache_key)
+    cached = _cache_get(db, cache_key, max_age_hours)
     if cached:
         return cached
 

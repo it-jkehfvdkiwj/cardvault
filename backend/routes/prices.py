@@ -32,7 +32,10 @@ async def get_price(
     tcg_prices: dict = {}
     if not card_api_id.startswith("cm-"):
         try:
-            card_data = await tcg_api_service.get_card_by_id(card_api_id, db)
+            # Prices must be recent — see the note on _cache_get().
+            card_data = await tcg_api_service.get_card_by_id(
+                card_api_id, db, max_age_hours=tcg_api_service.CACHE_TTL_HOURS
+            )
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"TCG API error: {exc}")
         if not card_data:
@@ -129,7 +132,9 @@ async def bulk_refresh_prices(
 
     for tcg_id in unique_ids:
         try:
-            card_data = await tcg_api_service.get_card_by_id(tcg_id, db)
+            card_data = await tcg_api_service.get_card_by_id(
+                tcg_id, db, max_age_hours=tcg_api_service.CACHE_TTL_HOURS
+            )
             if card_data:
                 prices = tcg_api_service.extract_price(card_data)
                 rows = (
