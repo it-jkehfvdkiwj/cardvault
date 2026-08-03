@@ -19,6 +19,7 @@ crop first and only fan out to extra crops / page-seg modes when the cheap pass
 fails (early exit).
 """
 
+import logging
 import os
 import re
 import threading
@@ -108,6 +109,15 @@ if os.getenv("OCR_ENGINE", "auto").strip().lower() != "pytesseract":
         _TESSEROCR = None
 
 _api_local = threading.local()
+
+# Say which engine is in use, once, at start-up. The fallback is deliberately
+# silent at call time so nothing breaks — but silent also meant a failed
+# tesserocr install looked exactly like a working one, just thirty times slower.
+logging.getLogger("cardvault.ocr").info(
+    "OCR-Engine: %s",
+    "tesserocr (im Prozess, schnell)" if _TESSEROCR else
+    "pytesseract (Unterprozess, langsam — tesserocr fehlt oder ist abgeschaltet)",
+)
 
 
 def _tessdata_path() -> str | None:

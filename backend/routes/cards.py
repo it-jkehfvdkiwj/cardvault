@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import uuid
 from datetime import datetime
@@ -29,6 +30,8 @@ from services import (
 )
 
 router = APIRouter(prefix="/api/cards", tags=["cards"])
+
+_scan_log = logging.getLogger("cardvault.scan")
 
 # Hamming distance threshold for "good enough" hash match (≥ 84 % similarity)
 HASH_GOOD_MATCH = 10
@@ -506,6 +509,17 @@ async def upload_cards(
                         candidates.append(c)
             except Exception:
                 pass
+
+        # One line per card, so a wrong identification can be diagnosed from
+        # `docker compose logs backend` instead of guessing. Without this the
+        # only visible symptom was "it picked the wrong card", with no way to
+        # tell whether the set code was misread, missed, or never looked up.
+        _scan_log.info(
+            "scan code=%s nr=%s/%s methode=%s treffer=%d bester=%s",
+            set_abbr, card_num, set_total, identification_method,
+            len(candidates),
+            (candidates[0].get("name") if candidates else "-"),
+        )
 
         # ── Step 3: language variants ─────────────────────────────────────
         # Deliberately NOT fetched here — it costs an extra (large) API round-trip
