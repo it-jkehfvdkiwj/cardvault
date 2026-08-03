@@ -104,7 +104,21 @@ MAX_RETRIES = 5
 RETRY_BASE_DELAY = 2.0          # seconds; doubles per attempt
 
 
-def _fetch_page(client: httpx.Client, page: int, page_size: int) -> dict:
+def _fetch_sets(client: httpx.Client) -> list[dict]:
+    """All set ids, newest first, so the useful ones land first."""
+    resp = client.get(
+        f"{API_BASE}/sets",
+        params={"pageSize": 250, "select": "id,name,series,printedTotal,releaseDate"},
+    )
+    resp.raise_for_status()
+    sets = resp.json().get("data") or []
+    sets.sort(key=lambda s: s.get("releaseDate") or "", reverse=True)
+    return sets
+
+
+def _fetch_page(
+    client: httpx.Client, page: int, page_size: int, query: str | None = None
+) -> dict:
     """One page, retried with a growing delay.
 
     The API returns intermittent 500s — a whole import died on page 1 with one,
@@ -120,10 +134,10 @@ def _fetch_page(client: httpx.Client, page: int, page_size: int) -> dict:
     last: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = client.get(
-                f"{API_BASE}/cards",
-                params={"page": page, "pageSize": page_size, "select": SELECT_FIELDS},
-            )
+            params = {"page": page, "pageSize": page_size, "select": SELECT_FIELDS}
+            if query:
+                params["q"] = query
+            resp = client.get(f"{API_BASE}/cards", params=params)
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as exc:
@@ -148,56 +162,98 @@ def _fetch_page(client: httpx.Client, page: int, page_size: int) -> dict:
 
 
 def import_all(db: Session, progress=None, page_limit: int | None = None) -> dict:
-    """Pull the whole catalogue, page by page, upserting as it goes.
+    """Pull the whole catalogue, **one set at a time**.
 
-    Safe to interrupt and safe to re-run: each page is committed on its own and
-    rows are matched by primary key, so a second run updates in place rather
-    than duplicating. About 82 requests for 20,000-odd cards.
+    Not a straight walk through /cards: paging that far in costs the server a
+    deep offset scan, and it fails. A real run got to page 67 — record 16,500 —
+    before every retry came back 500, while the early pages had gone through
+    fine. The deeper the page, the worse it got.
+
+    Fetching per set keeps every request shallow (no set has more than a few
+    hundred cards), which sidesteps the problem entirely instead of retrying
+    into it. It also gives an honest resume: a set whose local count already
+    matches the server's is skipped after one cheap request.
+
+    Safe to interrupt and safe to re-run — rows are matched by primary key.
     """
-    imported = updated = 0
-    page = 1
-    total = None
-    with httpx.Client(timeout=60, headers=_headers()) as client:
-        while True:
-            payload = _fetch_page(client, page, PAGE_SIZE)
-            cards = payload.get("data") or []
-            total = payload.get("totalCount", total)
-            if not cards:
-                break
+    imported = updated = skipped_sets = 0
+    failed_sets: list[str] = []
 
-            existing = {
-                c.id: c for c in db.query(CatalogCard).filter(
-                    CatalogCard.id.in_([c.get("id") for c in cards if c.get("id")])
-                )
-            }
-            for card in cards:
-                row = _row_from_api(card)
-                if not row["id"] or not row["name"]:
-                    continue
-                found = existing.get(row["id"])
-                if found:
-                    for k, v in row.items():
-                        if k != "id":
-                            setattr(found, k, v)
-                    updated += 1
-                else:
-                    db.add(CatalogCard(**row))
-                    imported += 1
-            db.commit()
+    with httpx.Client(timeout=60, headers=_headers()) as client:
+        sets = _fetch_sets(client)
+        if page_limit:
+            sets = sets[:page_limit]
+
+        for idx, s_meta in enumerate(sets, 1):
+            set_id = s_meta.get("id")
+            if not set_id:
+                continue
+            have = (
+                db.query(sa_func.count(CatalogCard.id))
+                .filter(CatalogCard.set_id == set_id).scalar() or 0
+            )
+            page = 1
+            set_total = None
+            try:
+                while True:
+                    payload = _fetch_page(
+                        client, page, PAGE_SIZE, query=f"set.id:{set_id}"
+                    )
+                    cards = payload.get("data") or []
+                    set_total = payload.get("totalCount", set_total)
+
+                    # Already complete: nothing to do beyond this one request.
+                    if page == 1 and set_total is not None and have >= set_total:
+                        skipped_sets += 1
+                        break
+                    if not cards:
+                        break
+
+                    existing = {
+                        c.id: c for c in db.query(CatalogCard).filter(
+                            CatalogCard.id.in_(
+                                [c.get("id") for c in cards if c.get("id")]
+                            )
+                        )
+                    }
+                    for card in cards:
+                        row = _row_from_api(card)
+                        if not row["id"] or not row["name"]:
+                            continue
+                        found = existing.get(row["id"])
+                        if found:
+                            for k, v in row.items():
+                                if k != "id":
+                                    setattr(found, k, v)
+                            updated += 1
+                        else:
+                            db.add(CatalogCard(**row))
+                            imported += 1
+                    db.commit()
+
+                    if len(cards) < PAGE_SIZE:
+                        break
+                    page += 1
+            except Exception as exc:
+                # One bad set must not cost the other 173.
+                db.rollback()
+                failed_sets.append(set_id)
+                logger.warning("Set %s uebersprungen: %s: %s",
+                               set_id, type(exc).__name__, exc)
 
             if progress:
-                progress(page, imported + updated, total)
-            # Not compared against PAGE_SIZE: a retry may have shrunk the
-            # page, and a short page would then be mistaken for the end.
-            if len(cards) < payload.get("pageSize", PAGE_SIZE):
-                break
-            page += 1
-            if page_limit and page > page_limit:
-                break
+                progress(idx, len(sets), set_id, imported + updated)
 
-    logger.info("Katalog: %d neu, %d aktualisiert (Gesamt laut API: %s)",
-                imported, updated, total)
-    return {"imported": imported, "updated": updated, "total": total}
+    logger.info(
+        "Katalog: %d neu, %d aktualisiert, %d Sets schon vollstaendig, %d fehlgeschlagen",
+        imported, updated, skipped_sets, len(failed_sets),
+    )
+    return {
+        "imported": imported,
+        "updated": updated,
+        "skipped_sets": skipped_sets,
+        "failed_sets": failed_sets,
+    }
 
 
 def stats(db: Session) -> dict:

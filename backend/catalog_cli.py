@@ -55,12 +55,12 @@ def cmd_status(db) -> int:
 
 
 def cmd_import(db, args) -> int:
-    print("Lade den Kartenkatalog. Das dauert ein paar Minuten.", flush=True)
+    print("Lade den Kartenkatalog, Set fuer Set. Das dauert ein paar Minuten.", flush=True)
     started = time.time()
 
-    def progress(page, seen, total):
-        pct = f"{seen * 100 / total:4.0f} %" if total else "     "
-        print(f"  Seite {page:>3}  {seen:>6} Karten  {pct}", flush=True)
+    def progress(idx, n_sets, set_id, seen):
+        print(f"  Set {idx:>3}/{n_sets}  {set_id:<12} {seen:>6} Karten "
+              f"{idx * 100 / n_sets:4.0f} %", flush=True)
 
     try:
         res = catalog_service.import_all(db, progress=progress, page_limit=args.pages)
@@ -70,8 +70,14 @@ def cmd_import(db, args) -> int:
         return 1
     print(
         f"\nFertig in {time.time() - started:.0f}s: "
-        f"{res['imported']} neu, {res['updated']} aktualisiert."
+        f"{res['imported']} neu, {res['updated']} aktualisiert, "
+        f"{res['skipped_sets']} Sets waren schon vollstaendig."
     )
+    if res["failed_sets"]:
+        print(
+            f"Nicht geladen: {', '.join(res['failed_sets'])}\n"
+            "Einfach noch einmal starten — fertige Sets werden uebersprungen."
+        )
     return cmd_status(db)
 
 
@@ -112,8 +118,8 @@ def main() -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     p_imp = sub.add_parser("import")
-    p_imp.add_argument("--pages", type=int, default=None,
-                       help="nur so viele Seiten laden (zum Ausprobieren)")
+    p_imp.add_argument("--pages", type=int, default=None, dest="pages",
+                       help="nur so viele SETS laden (zum Ausprobieren)")
     p_img = sub.add_parser("images")
     p_img.add_argument("--kind", choices=["small", "large"], default="small")
     p_img.add_argument("--limit", type=int, default=None)
