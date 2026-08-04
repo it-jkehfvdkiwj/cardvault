@@ -45,17 +45,25 @@ const MODES = [
 function confidenceOf(r) {
   if (r.error) return 'error'
   if (!r.candidates?.length) return 'unknown'
+  // Number and picture agreeing is the strongest signal the scanner has —
+  // stronger than the set code alone, which a smudge can turn into a
+  // different set.
   if (r.identification_method === 'set_number') return 'sure'
+  if (r.identification_method === 'number+bild') return 'sure'
+  if (r.identification_method === 'bild+nummer-uneinig') return 'unknown'
   return 'likely'
 }
 
 /** German cards should show their German name. The catalogue is English, so a
  *  correct hit on "Evoli" displayed "Eevee" and read as a mistake — four of
  *  seven reported misidentifications were exactly this and nothing else. */
-function displayName(cand, result) {
+function displayName(cand) {
   if (!cand) return null
-  const wantsGerman = (result?.detected_language || 'EN') === 'DE'
-  return (wantsGerman && cand.name_de) || cand.name
+  // Not conditional on the detected language: that value comes from the name
+  // OCR, which is skipped entirely whenever the collector number already
+  // identified the card — so it read "EN" on German cards and the German name
+  // never appeared. The app is German; when a German name exists, it wins.
+  return cand.name_de || cand.name
 }
 
 const CONF_STYLE = {
@@ -203,7 +211,7 @@ export default function UploadPage() {
       tcg_card_id: cand.id,
       // Store what the card actually says, so the collection and the eBay
       // title match the physical card in the seller's hand.
-      name: ((r.detected_language || 'EN') === 'DE' && cand.name_de) || cand.name,
+      name: cand.name_de || cand.name,
       set_name: cand.set?.name,
       set_code: cand.set?.id,
       rarity: cand.rarity,
@@ -508,7 +516,7 @@ export default function UploadPage() {
                       disabled={!r.candidates?.length}
                       checked={Boolean(picks[i]?.on && r.candidates?.length)}
                       onChange={(e) => setPicks((p) => ({ ...p, [i]: { ...p[i], on: e.target.checked } }))}
-                      aria-label={`${displayName(cand, r) || r.filename} auswählen`}
+                      aria-label={`${displayName(cand) || r.filename} auswählen`}
                     />
                   )}
 
@@ -526,7 +534,7 @@ export default function UploadPage() {
 
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm font-semibold truncate ${saved ? 'text-ink-3 line-through' : ''}`}>
-                      {saved?.name || displayName(cand, r) || r.error || 'Nicht erkannt'}
+                      {saved?.name || displayName(cand) || r.error || 'Nicht erkannt'}
                     </p>
                     <p className="text-xs text-ink-3 truncate">
                       {cand?.set?.name || r.ocr_name || r.filename}

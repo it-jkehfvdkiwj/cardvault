@@ -33,8 +33,17 @@ router = APIRouter(prefix="/api/cards", tags=["cards"])
 
 _scan_log = logging.getLogger("cardvault.scan")
 
-# Hamming distance threshold for "good enough" hash match (≥ 84 % similarity)
-HASH_GOOD_MATCH = 10
+# How close a picture match has to be to stand on its own.
+#
+# This used to be the constant 10, sized for the old 64-bit fingerprint. The
+# fingerprint is now 256 bits, so every distance quadrupled and the threshold
+# silently became four times stricter — the image match was effectively never
+# believed. Measured on real scans: correct matches landed at 50–63, wrong ones
+# at 99–101. A photo is never as close to a catalogue scan as two scans are to
+# each other, so the bar has to sit well above zero.
+#
+# Expressed as a share of the hash so it survives the next size change.
+HASH_GOOD_MATCH = int(hash_service.MAX_BITS * 0.31)      # 79 at 256 bits
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -243,7 +252,10 @@ def _cpu_stage_back(raw_bytes: bytes) -> str:
     "/upload",
     # Scanning is the most expensive thing the server does (decode + OCR + API
     # lookups per image). Without a cap, one tab can starve every other user.
-    dependencies=[Depends(rate_limit("upload", 30, 300))],
+    # Scanning used to mean an API round trip per card; now it is local CPU, so
+    # the old ceiling of 30 per five minutes only served to stop a real user
+    # mid-batch. A binder page alone can be 24 cards.
+    dependencies=[Depends(rate_limit("upload", int(os.getenv("SCAN_RATE_LIMIT", "300")), 300))],
 )
 async def upload_cards(
     files: list[UploadFile] = File(...),
