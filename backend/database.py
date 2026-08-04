@@ -65,7 +65,7 @@ def run_migrations() -> None:
         ],
         "catalog_cards": [
             ("phash", "VARCHAR"), ("phash_art", "VARCHAR"),
-            ("name_de", "VARCHAR"),
+            ("name_de", "VARCHAR"), ("phash_edge", "VARCHAR"),
         ],
         "users": [
             ("sale_photos_per_card", "INTEGER DEFAULT 1"),

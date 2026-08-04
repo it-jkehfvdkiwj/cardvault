@@ -252,6 +252,11 @@ class CatalogCard(Base):
     # card that says "Evoli" reads as a wrong identification even when it is
     # right — four of seven reported "errors" were exactly this.
     name_de = Column(String)
+    # A third fingerprint, taken from the image *gradients* rather than its
+    # brightness. Holo and full-art cards throw rainbow glare across the
+    # surface, which rewrites every brightness-based hash — but the outlines
+    # underneath survive. This is the one that works on foil.
+    phash_edge = Column(String)
     updated_at = Column(DateTime, server_default=func.now())
 
 

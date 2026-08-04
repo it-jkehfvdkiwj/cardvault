@@ -482,9 +482,11 @@ def build_phash_index(
     from services import hash_service
 
     if rebuild:
-        db.query(CatalogCard).update(
-            {CatalogCard.phash: None, CatalogCard.phash_art: None}
-        )
+        db.query(CatalogCard).update({
+            CatalogCard.phash: None,
+            CatalogCard.phash_art: None,
+            CatalogCard.phash_edge: None,
+        })
         db.commit()
     q = (
         db.query(CatalogCard)
@@ -499,7 +501,8 @@ def build_phash_index(
     for i, row in enumerate(rows, 1):
         path = IMAGE_DIR / row.local_image
         try:
-            row.phash, row.phash_art = hash_service.signature_of_file(str(path))
+            row.phash, row.phash_art, row.phash_edge = \
+                hash_service.signature_of_file(str(path))
             if row.phash:
                 done += 1
             else:

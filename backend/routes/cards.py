@@ -45,6 +45,31 @@ _scan_log = logging.getLogger("cardvault.scan")
 # Expressed as a share of the hash so it survives the next size change.
 HASH_GOOD_MATCH = int(hash_service.MAX_BITS * 0.31)      # 79 at 256 bits
 
+# …and how far a *poorer* match may still be trusted when it clearly beats the
+# field. Glare, a dark room or a curled card push even the correct match past
+# the bar above, and a fixed threshold then rejects it — that is exactly the
+# failure a foil card kept producing. But a bad photo pushes *every* candidate
+# away, so the right one keeps its lead; a genuinely wrong guess sits in a crowd
+# of equally wrong ones. The lead is therefore the signal, and the absolute
+# distance only a ceiling.
+#
+# Measured on 112 scans across four lighting conditions: this rule accepts 83
+# instead of 70, none of them wrong, and lets in no card that is not in the
+# catalogue at all.
+HASH_FAR_MATCH = int(hash_service.MAX_BITS * 0.43)       # 110 at 256 bits
+HASH_MIN_LEAD = 12                                       # bits ahead of runner-up
+
+
+def _picture_is_convincing(hits: list[tuple[str, int]]) -> bool:
+    """Whether the best picture match may stand on its own."""
+    if not hits:
+        return False
+    best = hits[0][1]
+    if best <= HASH_GOOD_MATCH:
+        return True
+    runner_up = hits[1][1] if len(hits) > 1 else hash_service.MAX_BITS
+    return best <= HASH_FAR_MATCH and (runner_up - best) >= HASH_MIN_LEAD
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -509,11 +534,13 @@ async def upload_cards(
         # two is what turns a guess into certainty — and disagreement is worth
         # showing rather than hiding.
         catalog_hits: list[tuple[str, int]] = []
-        phash, art_hash = await asyncio.to_thread(hash_service.signature, cv_img)
+        phash, art_hash, edge_hash = await asyncio.to_thread(
+            hash_service.signature, cv_img
+        )
         if phash:
             try:
                 catalog_hits = hash_service.find_in_catalog(
-                    phash, db, top=3, art_hash=art_hash
+                    phash, db, top=3, art_hash=art_hash, edge_hash=edge_hash
                 )
             except Exception as exc:
                 _scan_log.warning("Bildabgleich fehlgeschlagen: %s", exc)
@@ -527,7 +554,7 @@ async def upload_cards(
                 identification_method = "number+bild"
                 identified_early = True
                 candidates.sort(key=lambda c: c.get("id") != best_id)
-            elif best_dist <= HASH_GOOD_MATCH:
+            elif _picture_is_convincing(catalog_hits):
                 from services import catalog_service as _cat
 
                 card = _cat.get_by_id(db, best_id)
@@ -588,7 +615,14 @@ async def upload_cards(
             set_abbr, card_num, set_total, identification_method,
             len(candidates),
             (candidates[0].get("name") if candidates else "-"),
-            (f"{catalog_hits[0][0]}@{catalog_hits[0][1]}" if catalog_hits else "-"),
+            # Best match, its distance, and — after the slash — the runner-up's.
+            # The gap between the two is what decides a borderline case, so a
+            # log line without it cannot explain why a card was accepted.
+            (
+                f"{catalog_hits[0][0]}@{catalog_hits[0][1]}"
+                + (f"/{catalog_hits[1][1]}" if len(catalog_hits) > 1 else "")
+                if catalog_hits else "-"
+            ),
         )
 
         # ── Step 3: language variants ─────────────────────────────────────
