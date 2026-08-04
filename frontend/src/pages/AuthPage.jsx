@@ -47,10 +47,15 @@ export default function AuthPage() {
     try {
       if (isRegister) {
         const res = await register(email, password, displayName, inviteCode)
-        setPendingEmail(res.email || email)
-        setMailSent(res.mail_sent !== false)
-        setCooldown(res.resend_in || 60)
-        setCode('')
+        if (res.access_token) {
+          // Confirmation is switched off on this server — already logged in.
+          toast.success('Konto erstellt — willkommen!')
+        } else {
+          setPendingEmail(res.email || email)
+          setMailSent(res.mail_sent !== false)
+          setCooldown(res.resend_in || 60)
+          setCode('')
+        }
       } else {
         await login(email, password)
         toast.success('Willkommen zurück!')

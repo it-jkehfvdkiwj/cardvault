@@ -126,6 +126,19 @@ def private_beta() -> bool:
     return os.getenv("PRIVATE_BETA", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def email_verification() -> bool:
+    """Whether a new account must confirm its address before it can log in.
+
+    On by default. ``EMAIL_VERIFICATION=false`` turns it off without a rebuild —
+    the escape hatch for the day a tester cannot get in and the cause is not yet
+    understood. Accounts created while it is off are marked confirmed straight
+    away, so switching it back on later does not lock them out.
+    """
+    return os.getenv("EMAIL_VERIFICATION", "true").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
+
+
 def invite_codes() -> set[str]:
     """Accepted invite codes, compared case-insensitively."""
     raw = os.getenv("INVITE_CODES", "")

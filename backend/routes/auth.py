@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -16,6 +17,11 @@ from services import (
 from services.rate_limit import rate_limit, clear_failures, too_many_failures
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Registration problems are invisible from the outside — the user just sees a
+# red toast and nobody can tell whether it was the invite code, a duplicate
+# address or the mail server. These lines make the next attempt diagnosable.
+_log = logging.getLogger("cardvault.auth")
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -72,7 +78,7 @@ def auth_config():
     """
     return {
         "private_beta": config.private_beta(),
-        "email_verification": True,
+        "email_verification": config.email_verification(),
     }
 
 
@@ -122,8 +128,12 @@ def register(
         last_login_at=datetime.now(timezone.utc),
         invite_code=invite_service.redeem(db, used_code) if used_code else None,
     )
-    # The account starts unconfirmed and cannot log in yet — see verify().
-    code = verify_service.issue(user)
+    verify_on = config.email_verification()
+    code = verify_service.issue(user) if verify_on else None
+    if not verify_on:
+        # Stamped as confirmed right away: if verification is switched back on
+        # later, accounts made in the meantime must not be locked out.
+        user.email_verified_at = datetime.now(timezone.utc)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -137,10 +147,15 @@ def register(
         invite_code=user.invite_code,
         total_users=db.query(User).count(),
     )
+    if not verify_on:
+        _log.info("Registrierung ohne Bestaetigung freigeschaltet: %s", user.email)
+        return _token_response(user, db)
+
     # The confirmation mail is sent inline, not in the background: if it cannot
     # be delivered the user must find out now, while they are still looking at
     # the form, rather than waiting for a code that will never arrive.
     sent = email_service.send_verification_code(user.email, code)
+    _log.info("Registrierung: %s, Code verschickt: %s", user.email, sent)
     return {
         "needs_verification": True,
         "email": user.email,
@@ -169,7 +184,7 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
     clear_failures(email)
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Dieses Konto wurde deaktiviert.")
-    if not verify_service.is_verified(user):
+    if config.email_verification() and not verify_service.is_verified(user):
         # 403 with a machine-readable marker so the login screen can switch
         # straight to the code field instead of showing a dead end.
         raise HTTPException(

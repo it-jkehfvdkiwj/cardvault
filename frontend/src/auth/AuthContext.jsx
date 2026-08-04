@@ -33,9 +33,10 @@ export function AuthProvider({ children }) {
   }
 
   /**
-   * Create an account. Returns the raw response: since e-mail confirmation
-   * exists there is NO token yet — the caller has to collect the code first and
-   * then call verify(). Returning the user here would have been a lie.
+   * Create an account. Returns the raw response, because there are two shapes:
+   * with e-mail confirmation on it carries `needs_verification` and no token —
+   * the caller collects the code and calls verify(). With confirmation off
+   * (EMAIL_VERIFICATION=false) it carries a token and the session starts here.
    */
   async function register(email, password, displayName, inviteCode) {
     const { data } = await authApi.register({
@@ -44,6 +45,10 @@ export function AuthProvider({ children }) {
       display_name: displayName || undefined,
       invite_code: inviteCode || undefined,
     })
+    if (data.access_token) {
+      setToken(data.access_token)
+      setUser(data.user)
+    }
     return data
   }
 
