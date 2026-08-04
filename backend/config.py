@@ -88,6 +88,33 @@ def enforce() -> None:
             file=sys.stderr,
         )
 
+    # A guessable invite code makes a "closed" beta open, quietly. The sign-up
+    # page even announces that a code is required, so "1234" is the first thing
+    # anyone tries — and the per-IP rate limit is no defence when a single
+    # attempt is enough. Warned about rather than refused, because locking a
+    # running deploy out over a weak code would be worse than the code.
+    #
+    # INVITE_CODES_WEAK_OK=true silences it. A warning that is knowingly ignored
+    # every single start-up trains you to skim past the log, and the next one
+    # will matter.
+    weak_ok = os.getenv("INVITE_CODES_WEAK_OK", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    for code in () if weak_ok else invite_codes():
+        weak = (
+            len(code) < 8
+            or code.isdigit()
+            or code.lower() in {"test", "beta", "invite", "cardeva", "passwort"}
+        )
+        if weak:
+            print(
+                f"[Cardeva] WARNUNG: Der Einladungscode {code!r} ist zu leicht zu "
+                "erraten — damit kann sich praktisch jeder registrieren. Erzeuge "
+                "einen im Admin-Panel unter „Einladungen“ (dort mit Nutzungslimit) "
+                "oder nimm mindestens 8 zufaellige Zeichen.",
+                file=sys.stderr,
+            )
+
     if not IS_PRODUCTION:
         if os.getenv("JWT_SECRET", DEV_JWT_SECRET) == DEV_JWT_SECRET:
             print(
