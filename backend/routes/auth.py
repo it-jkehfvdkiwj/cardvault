@@ -184,15 +184,24 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
     clear_failures(email)
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Dieses Konto wurde deaktiviert.")
-    if config.email_verification() and not verify_service.is_verified(user):
-        # 403 with a machine-readable marker so the login screen can switch
-        # straight to the code field instead of showing a dead end.
-        raise HTTPException(
-            status_code=403,
-            detail="Bitte bestätige zuerst deine E-Mail-Adresse. "
-                   "Wir haben dir einen Code geschickt.",
-            headers={"X-Needs-Verification": "1"},
-        )
+    if config.email_verification():
+        if not verify_service.is_verified(user):
+            # 403 with a machine-readable marker so the login screen can switch
+            # straight to the code field instead of showing a dead end.
+            raise HTTPException(
+                status_code=403,
+                detail="Bitte bestätige zuerst deine E-Mail-Adresse. "
+                       "Wir haben dir einen Code geschickt.",
+                headers={"X-Needs-Verification": "1"},
+            )
+    elif not verify_service.is_verified(user):
+        # Verification is switched off and this account never confirmed —
+        # typically because it was created while verification was on and the
+        # code never arrived. Stamp it now: otherwise turning verification back
+        # on would silently lock out everyone who joined during the off period,
+        # which is a trap that only springs weeks later.
+        user.email_verified_at = datetime.now(timezone.utc)
+        _log.info("Konto ohne Bestaetigung freigeschaltet (Pflicht ist aus): %s", email)
     # Auto-promote configured admin emails and stamp the login time.
     if auth_service.is_admin_email(email) and not user.is_admin:
         user.is_admin = True
