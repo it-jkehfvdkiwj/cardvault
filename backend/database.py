@@ -63,7 +63,7 @@ def run_migrations() -> None:
             ("photo_front", "VARCHAR"), ("photo_back", "VARCHAR"),
             ("sale_price", "FLOAT"),
         ],
-        "catalog_cards": [("phash", "VARCHAR")],
+        "catalog_cards": [("phash", "VARCHAR"), ("phash_art", "VARCHAR")],
         "users": [
             ("sale_photos_per_card", "INTEGER DEFAULT 1"),
             ("password_changed_at", "TIMESTAMP"),

@@ -130,7 +130,9 @@ def cmd_hashes(db, args) -> int:
     def progress(done, total):
         print(f"  {done}/{total}", flush=True)
 
-    res = catalog_service.build_phash_index(db, limit=args.limit, progress=progress)
+    res = catalog_service.build_phash_index(
+        db, limit=args.limit, progress=progress, rebuild=args.rebuild
+    )
     print(
         f"\nFertig in {time.time() - started:.0f}s: {res['hashed']} berechnet, "
         f"{res['failed']} fehlgeschlagen. Im Index: {res['total_indexed']:,}"
@@ -165,6 +167,8 @@ def main() -> int:
     sub.add_parser("relink")
     p_hash = sub.add_parser("hashes")
     p_hash.add_argument("--limit", type=int, default=None)
+    p_hash.add_argument("--rebuild", action="store_true",
+                        help="alle Kennungen neu berechnen")
     p_imp = sub.add_parser("import")
     p_imp.add_argument("--pages", type=int, default=None, dest="pages",
                        help="nur so viele SETS laden (zum Ausprobieren)")

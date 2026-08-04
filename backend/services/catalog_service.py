@@ -404,7 +404,9 @@ def is_populated(db: Session) -> bool:
 
 # ── Images ────────────────────────────────────────────────────────────────────
 
-def build_phash_index(db: Session, limit: int | None = None, progress=None) -> dict:
+def build_phash_index(
+    db: Session, limit: int | None = None, progress=None, rebuild: bool = False,
+) -> dict:
     """Compute a perceptual hash for every locally stored card image.
 
     This is what makes visual identification actually work. The old index was
@@ -419,6 +421,11 @@ def build_phash_index(db: Session, limit: int | None = None, progress=None) -> d
     """
     from services import hash_service
 
+    if rebuild:
+        db.query(CatalogCard).update(
+            {CatalogCard.phash: None, CatalogCard.phash_art: None}
+        )
+        db.commit()
     q = (
         db.query(CatalogCard)
         .filter(CatalogCard.local_image.isnot(None), CatalogCard.phash.is_(None))
@@ -432,7 +439,7 @@ def build_phash_index(db: Session, limit: int | None = None, progress=None) -> d
     for i, row in enumerate(rows, 1):
         path = IMAGE_DIR / row.local_image
         try:
-            row.phash = hash_service.phash_of_file(str(path))
+            row.phash, row.phash_art = hash_service.signature_of_file(str(path))
             if row.phash:
                 done += 1
             else:
@@ -452,6 +459,7 @@ def build_phash_index(db: Session, limit: int | None = None, progress=None) -> d
         db.query(sa_func.count(CatalogCard.id))
         .filter(CatalogCard.phash.isnot(None)).scalar() or 0
     )
+    hash_service.reset_index()
     return {"hashed": done, "failed": failed, "total_indexed": total}
 
 

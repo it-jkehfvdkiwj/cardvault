@@ -497,10 +497,12 @@ async def upload_cards(
         # two is what turns a guess into certainty — and disagreement is worth
         # showing rather than hiding.
         catalog_hits: list[tuple[str, int]] = []
-        phash = await asyncio.to_thread(hash_service.compute_phash, cv_img)
+        phash, art_hash = await asyncio.to_thread(hash_service.signature, cv_img)
         if phash:
             try:
-                catalog_hits = hash_service.find_in_catalog(phash, db, top=3)
+                catalog_hits = hash_service.find_in_catalog(
+                    phash, db, top=3, art_hash=art_hash
+                )
             except Exception as exc:
                 _scan_log.warning("Bildabgleich fehlgeschlagen: %s", exc)
 

@@ -241,6 +241,12 @@ class CatalogCard(Base):
     # This is what lets a card be identified when the printed number is
     # unreadable — glare, an angle, a worn edge — which is most of the failures.
     phash = Column(String, index=True)
+    # A second fingerprint, taken from the illustration window alone. The card
+    # frame is nearly identical across a whole set, so a hash of the full card
+    # spends most of its bits describing what every card shares. The artwork is
+    # what actually differs, and matching on it is what separates two cards from
+    # the same set.
+    phash_art = Column(String)
     updated_at = Column(DateTime, server_default=func.now())
 
 

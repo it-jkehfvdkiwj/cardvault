@@ -21,6 +21,7 @@ We return best distance so callers can decide the threshold.
 
 import io
 import logging
+import os
 import threading
 
 import cv2
@@ -38,8 +39,12 @@ except ImportError:
 
 from models import CardHashIndex
 
-HASH_SIZE = 8               # 8×8 grid → 64-bit hash stored as 16 hex chars
-MAX_BITS = HASH_SIZE ** 2   # 64
+# 16×16 → 256 bits. The old 8×8 gave 64 bits for the *whole* card, and on
+# Pokémon cards most of that describes the frame every card shares: same border,
+# same bars, same text blocks. Four times the resolution, and the artwork hash
+# below, are what make two cards from one set distinguishable at all.
+HASH_SIZE = int(os.getenv("PHASH_SIZE", "16"))
+MAX_BITS = HASH_SIZE ** 2
 
 logger = logging.getLogger("cardvault.hash")
 GOOD_MATCH_DISTANCE = 10    # ≤ this → high confidence (≥ 84 %)
@@ -70,6 +75,38 @@ def compute_phash(cv_img: np.ndarray) -> str | None:
     return _pil_to_phash(pil)
 
 
+# The illustration window as a fraction of the card, measured on modern layouts.
+# Deliberately generous: a few pixels of frame cost far less than clipping the
+# picture, and old layouts put the art slightly differently.
+_ART_BOX = (0.07, 0.10, 0.93, 0.57)     # left, top, right, bottom
+
+
+def art_crop(cv_img: np.ndarray) -> np.ndarray:
+    """The illustration window of a portrait card image."""
+    h, w = cv_img.shape[:2]
+    x0, y0, x1, y1 = _ART_BOX
+    crop = cv_img[int(h * y0):int(h * y1), int(w * x0):int(w * x1)]
+    return crop if crop.size else cv_img
+
+
+def signature(cv_img: np.ndarray) -> tuple[str | None, str | None]:
+    """(full-card hash, artwork hash) for a deskewed card image."""
+    if not IMAGEHASH_AVAILABLE:
+        return None, None
+    full = _pil_to_phash(Image.fromarray(cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)))
+    art_img = art_crop(cv_img)
+    art = _pil_to_phash(Image.fromarray(cv2.cvtColor(art_img, cv2.COLOR_BGR2RGB)))
+    return full, art
+
+
+def signature_of_file(path: str) -> tuple[str | None, str | None]:
+    """Same, for a stored catalogue image."""
+    img = cv2.imread(path)
+    if img is None:
+        return None, None
+    return signature(img)
+
+
 def phash_of_file(path: str) -> str | None:
     """Perceptual hash of an image file on disk (used to index the catalogue)."""
     try:
@@ -87,13 +124,24 @@ def phash_of_file(path: str) -> str | None:
 # card. Hashes are 64-bit numbers, so the comparison is one XOR and a bit count
 # — microseconds for the whole catalogue — and the table only has to be read
 # once.
-_INDEX: list[tuple[str, int]] = []      # (tcg_card_id, phash as int)
-_INDEX_SIZE = -1                        # row count the cache was built from
+_INDEX: list[tuple[str, int, int]] = []   # (id, full-card hash, artwork hash)
+_INDEX_SIZE = -1
 _INDEX_LOCK = threading.Lock()
 
+# How the two fingerprints are weighed against each other. The artwork carries
+# most of the discriminating information — the frame is shared across a set —
+# so it counts double.
+_W_FULL, _W_ART = 1.0, 2.0
 
-def _catalog_index(db: Session) -> list[tuple[str, int]]:
-    """(id, hash) pairs for the whole catalogue, cached across requests."""
+
+def reset_index() -> None:
+    """Force a reload, e.g. right after the index has been rebuilt."""
+    global _INDEX_SIZE
+    _INDEX_SIZE = -1
+
+
+def _catalog_index(db: Session) -> list[tuple[str, int, int]]:
+    """(id, full hash, art hash) for the whole catalogue, cached across requests."""
     global _INDEX, _INDEX_SIZE
     from models import CatalogCard
 
@@ -107,32 +155,60 @@ def _catalog_index(db: Session) -> list[tuple[str, int]]:
         if count == _INDEX_SIZE:       # another thread got there first
             return _INDEX
         rows = (
-            db.query(CatalogCard.id, CatalogCard.phash)
+            db.query(CatalogCard.id, CatalogCard.phash, CatalogCard.phash_art)
             .filter(CatalogCard.phash.isnot(None)).all()
         )
         built = []
-        for cid, ph in rows:
+        for cid, ph, pa in rows:
             try:
-                built.append((cid, int(ph, 16)))
+                full = int(ph, 16)
             except (TypeError, ValueError):
                 continue
+            try:
+                art = int(pa, 16)
+            except (TypeError, ValueError):
+                art = full          # older rows without an artwork hash
+            built.append((cid, full, art))
         _INDEX, _INDEX_SIZE = built, count
         logger.info("Bildindex geladen: %d Karten", len(built))
     return _INDEX
 
 
-def find_in_catalog(phash: str, db: Session, top: int = 3) -> list[tuple[str, int]]:
-    """Closest catalogue cards for a hash, as (tcg_card_id, distance), best first."""
+def find_in_catalog(
+    phash: str, db: Session, top: int = 3, art_hash: str | None = None,
+) -> list[tuple[str, int]]:
+    """Closest catalogue cards, as (tcg_card_id, distance), best first.
+
+    Distance is a weighted blend of the two fingerprints, normalised back onto
+    the 0..MAX_BITS scale so existing thresholds keep their meaning.
+    """
     index = _catalog_index(db)
     if not index:
         return []
     try:
-        needle = int(phash, 16)
+        needle_full = int(phash, 16)
     except (TypeError, ValueError):
         return []
-    scored = [(cid, (needle ^ h).bit_count()) for cid, h in index]
+    needle_art = needle_full
+    if art_hash:
+        try:
+            needle_art = int(art_hash, 16)
+        except (TypeError, ValueError):
+            pass
+
+    total_w = _W_FULL + _W_ART
+    scored = [
+        (
+            cid,
+            round(
+                (_W_FULL * (needle_full ^ f).bit_count()
+                 + _W_ART * (needle_art ^ a).bit_count()) / total_w
+            ),
+        )
+        for cid, f, a in index
+    ]
     scored.sort(key=lambda x: x[1])
-    return [(cid, d) for cid, d in scored[:top]]
+    return scored[:top]
 
 
 def find_best_match(phash: str, db: Session) -> tuple[dict | None, int]:
