@@ -5,6 +5,7 @@ Command line for the local card catalogue.
     docker compose exec backend python catalog_cli.py import
     docker compose exec backend python catalog_cli.py images --kind small
     docker compose exec backend python catalog_cli.py images --kind large --limit 500
+    docker compose exec backend python catalog_cli.py hashes
     docker compose exec backend python catalog_cli.py relink
 
 Note the path: the image sets WORKDIR=/app/backend, so the script is addressed
@@ -49,6 +50,7 @@ def cmd_status(db) -> int:
     print(f"Karten im Katalog:      {s['cards']:,}".replace(",", "."))
     print(f"Sets:                   {s['sets']}")
     print(f"davon mit eigenem Bild: {s['with_local_image']:,}".replace(",", "."))
+    print(f"davon im Bildindex:     {s['with_phash']:,}".replace(",", "."))
     print(f"Bilder belegen:         {_human(used)}")
     print(f"Frei auf der Platte:    {_human(free)}")
     print(f"Bildordner:             {img_dir}")
@@ -121,6 +123,24 @@ def cmd_images(db, args) -> int:
     return 0
 
 
+def cmd_hashes(db, args) -> int:
+    print("Berechne Bildkennungen aus den lokalen Kartenbildern.", flush=True)
+    started = time.time()
+
+    def progress(done, total):
+        print(f"  {done}/{total}", flush=True)
+
+    res = catalog_service.build_phash_index(db, limit=args.limit, progress=progress)
+    print(
+        f"\nFertig in {time.time() - started:.0f}s: {res['hashed']} berechnet, "
+        f"{res['failed']} fehlgeschlagen. Im Index: {res['total_indexed']:,}"
+        .replace(",", ".")
+    )
+    if res["failed"]:
+        print("Fehlgeschlagene meist wegen fehlender Bilddatei — erst 'images' laufen lassen.")
+    return 0
+
+
 def cmd_relink(db) -> int:
     try:
         res = catalog_service.relink_collection(db)
@@ -143,6 +163,8 @@ def main() -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     sub.add_parser("relink")
+    p_hash = sub.add_parser("hashes")
+    p_hash.add_argument("--limit", type=int, default=None)
     p_imp = sub.add_parser("import")
     p_imp.add_argument("--pages", type=int, default=None, dest="pages",
                        help="nur so viele SETS laden (zum Ausprobieren)")
@@ -162,6 +184,8 @@ def main() -> int:
             return cmd_images(db, args)
         if args.cmd == "relink":
             return cmd_relink(db)
+        if args.cmd == "hashes":
+            return cmd_hashes(db, args)
     finally:
         db.close()
     return 0

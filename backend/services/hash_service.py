@@ -21,11 +21,13 @@ We return best distance so callers can decide the threshold.
 
 import io
 import logging
+import threading
 
 import cv2
 import httpx
 import numpy as np
 from PIL import Image
+from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
 
 try:
@@ -36,10 +38,10 @@ except ImportError:
 
 from models import CardHashIndex
 
-logger = logging.getLogger(__name__)
-
 HASH_SIZE = 8               # 8×8 grid → 64-bit hash stored as 16 hex chars
 MAX_BITS = HASH_SIZE ** 2   # 64
+
+logger = logging.getLogger("cardvault.hash")
 GOOD_MATCH_DISTANCE = 10    # ≤ this → high confidence (≥ 84 %)
 FALLBACK_DISTANCE = 16      # ≤ this → possible match (≥ 75 %)
 
@@ -66,6 +68,71 @@ def compute_phash(cv_img: np.ndarray) -> str | None:
         return None
     pil = Image.fromarray(cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB))
     return _pil_to_phash(pil)
+
+
+def phash_of_file(path: str) -> str | None:
+    """Perceptual hash of an image file on disk (used to index the catalogue)."""
+    try:
+        with Image.open(path) as img:
+            return _pil_to_phash(img.convert("RGB"))
+    except Exception:
+        return None
+
+
+# ── Catalogue index, held in memory ───────────────────────────────────────────
+#
+# The old lookup pulled every row out of the database on each scan and compared
+# hex strings character by character. That was tolerable with a dozen entries;
+# with the full catalogue it is 20,000 rows and 20,000 string comparisons per
+# card. Hashes are 64-bit numbers, so the comparison is one XOR and a bit count
+# — microseconds for the whole catalogue — and the table only has to be read
+# once.
+_INDEX: list[tuple[str, int]] = []      # (tcg_card_id, phash as int)
+_INDEX_SIZE = -1                        # row count the cache was built from
+_INDEX_LOCK = threading.Lock()
+
+
+def _catalog_index(db: Session) -> list[tuple[str, int]]:
+    """(id, hash) pairs for the whole catalogue, cached across requests."""
+    global _INDEX, _INDEX_SIZE
+    from models import CatalogCard
+
+    count = (
+        db.query(sa_func.count(CatalogCard.id))
+        .filter(CatalogCard.phash.isnot(None)).scalar() or 0
+    )
+    if count == _INDEX_SIZE:
+        return _INDEX
+    with _INDEX_LOCK:
+        if count == _INDEX_SIZE:       # another thread got there first
+            return _INDEX
+        rows = (
+            db.query(CatalogCard.id, CatalogCard.phash)
+            .filter(CatalogCard.phash.isnot(None)).all()
+        )
+        built = []
+        for cid, ph in rows:
+            try:
+                built.append((cid, int(ph, 16)))
+            except (TypeError, ValueError):
+                continue
+        _INDEX, _INDEX_SIZE = built, count
+        logger.info("Bildindex geladen: %d Karten", len(built))
+    return _INDEX
+
+
+def find_in_catalog(phash: str, db: Session, top: int = 3) -> list[tuple[str, int]]:
+    """Closest catalogue cards for a hash, as (tcg_card_id, distance), best first."""
+    index = _catalog_index(db)
+    if not index:
+        return []
+    try:
+        needle = int(phash, 16)
+    except (TypeError, ValueError):
+        return []
+    scored = [(cid, (needle ^ h).bit_count()) for cid, h in index]
+    scored.sort(key=lambda x: x[1])
+    return [(cid, d) for cid, d in scored[:top]]
 
 
 def find_best_match(phash: str, db: Session) -> tuple[dict | None, int]:

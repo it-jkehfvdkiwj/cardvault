@@ -492,11 +492,49 @@ async def upload_cards(
         # already gave a confident hit (it's otherwise computed and thrown away).
         hash_match, hamming = None, hash_service.MAX_BITS + 1
 
-        if not identified_early:
-            phash = await asyncio.to_thread(hash_service.compute_phash, cv_img)
-            if phash:
-                hash_match, hamming = hash_service.find_best_match(phash, db)
+        # The picture is now a first-class identifier, not a last resort. It is
+        # computed even when the number was read, because agreement between the
+        # two is what turns a guess into certainty — and disagreement is worth
+        # showing rather than hiding.
+        catalog_hits: list[tuple[str, int]] = []
+        phash = await asyncio.to_thread(hash_service.compute_phash, cv_img)
+        if phash:
+            try:
+                catalog_hits = hash_service.find_in_catalog(phash, db, top=3)
+            except Exception as exc:
+                _scan_log.warning("Bildabgleich fehlgeschlagen: %s", exc)
 
+        if catalog_hits:
+            best_id, best_dist = catalog_hits[0]
+            known = {c.get("id") for c in candidates}
+            if best_id in known:
+                # Number and picture point at the same card. Nothing more to do
+                # than say so: this is the strongest signal the scanner has.
+                identification_method = "number+bild"
+                identified_early = True
+                candidates.sort(key=lambda c: c.get("id") != best_id)
+            elif best_dist <= HASH_GOOD_MATCH:
+                from services import catalog_service as _cat
+
+                card = _cat.get_by_id(db, best_id)
+                if card:
+                    card = {**card, "_confidence":
+                            hash_service.confidence_pct(best_dist)}
+                    if not candidates:
+                        candidates.append(card)
+                        identification_method = "bild"
+                        identified_early = True
+                    else:
+                        # The two disagree. Both go to the user, picture first —
+                        # a close visual match beats a number read off a blurry
+                        # corner — but nothing is silently discarded.
+                        candidates.insert(0, card)
+                        identification_method = "bild+nummer-uneinig"
+
+        # Legacy index (populated per confirmed card) — only consulted when the
+        # catalogue has nothing, i.e. before `catalog_cli.py hashes` has run.
+        if not identified_early and not catalog_hits and phash:
+            hash_match, hamming = hash_service.find_best_match(phash, db)
             if hash_match and hamming <= HASH_GOOD_MATCH:
                 candidates.append(hash_match)
                 identification_method = "phash"
@@ -532,10 +570,11 @@ async def upload_cards(
         # only visible symptom was "it picked the wrong card", with no way to
         # tell whether the set code was misread, missed, or never looked up.
         _scan_log.info(
-            "scan code=%s nr=%s/%s methode=%s treffer=%d bester=%s",
+            "scan code=%s nr=%s/%s methode=%s treffer=%d bester=%s bild=%s",
             set_abbr, card_num, set_total, identification_method,
             len(candidates),
             (candidates[0].get("name") if candidates else "-"),
+            (f"{catalog_hits[0][0]}@{catalog_hits[0][1]}" if catalog_hits else "-"),
         )
 
         # ── Step 3: language variants ─────────────────────────────────────

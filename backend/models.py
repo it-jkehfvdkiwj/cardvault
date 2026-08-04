@@ -236,6 +236,11 @@ class CatalogCard(Base):
     image_small = Column(String)
     image_large = Column(String)
     local_image = Column(String)
+    # Perceptual hash of the card artwork, as a 16-char hex string. Filled from
+    # the locally stored image, so building the index needs no network at all.
+    # This is what lets a card be identified when the printed number is
+    # unreadable — glare, an angle, a worn edge — which is most of the failures.
+    phash = Column(String, index=True)
     updated_at = Column(DateTime, server_default=func.now())
 
 

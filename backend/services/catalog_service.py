@@ -312,7 +312,14 @@ def stats(db: Session) -> dict:
         db.query(sa_func.count(CatalogCard.id))
         .filter(CatalogCard.local_image.isnot(None)).scalar() or 0
     )
-    return {"cards": n, "sets": sets, "with_local_image": with_img}
+    with_hash = (
+        db.query(sa_func.count(CatalogCard.id))
+        .filter(CatalogCard.phash.isnot(None)).scalar() or 0
+    )
+    return {
+        "cards": n, "sets": sets,
+        "with_local_image": with_img, "with_phash": with_hash,
+    }
 
 
 # ── Lookup (the reason the catalogue exists) ─────────────────────────────────
@@ -396,6 +403,57 @@ def is_populated(db: Session) -> bool:
 
 
 # ── Images ────────────────────────────────────────────────────────────────────
+
+def build_phash_index(db: Session, limit: int | None = None, progress=None) -> dict:
+    """Compute a perceptual hash for every locally stored card image.
+
+    This is what makes visual identification actually work. The old index was
+    filled one card at a time, after a scan was confirmed, by downloading that
+    card's picture — so in practice it held a handful of entries and the visual
+    path never fired. Every card whose printed number the OCR could not read
+    fell through to guessing by name.
+
+    The pictures are already on disk, so this is pure local CPU: no network, no
+    rate limit, repeatable. Cards without a downloaded image are skipped — run
+    ``images`` first.
+    """
+    from services import hash_service
+
+    q = (
+        db.query(CatalogCard)
+        .filter(CatalogCard.local_image.isnot(None), CatalogCard.phash.is_(None))
+        .order_by(CatalogCard.id)
+    )
+    if limit:
+        q = q.limit(limit)
+    rows = q.all()
+
+    done = failed = 0
+    for i, row in enumerate(rows, 1):
+        path = IMAGE_DIR / row.local_image
+        try:
+            row.phash = hash_service.phash_of_file(str(path))
+            if row.phash:
+                done += 1
+            else:
+                failed += 1
+        except Exception as exc:
+            failed += 1
+            if failed <= 3:
+                logger.warning("Hash fehlgeschlagen %s: %s: %s",
+                               row.id, type(exc).__name__, exc)
+        if i % 200 == 0:
+            db.commit()
+            if progress:
+                progress(i, len(rows))
+    db.commit()
+
+    total = (
+        db.query(sa_func.count(CatalogCard.id))
+        .filter(CatalogCard.phash.isnot(None)).scalar() or 0
+    )
+    return {"hashed": done, "failed": failed, "total_indexed": total}
+
 
 def relink_collection(db: Session) -> dict:
     """Point existing collection cards at the locally stored artwork.
