@@ -231,7 +231,32 @@ async def security_headers(request, call_next):
     elif path.startswith("/catalog-images/"):
         response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
     elif path in ("/", "/index.html") or response.headers.get("content-type", "").startswith("text/html"):
-        response.headers["Cache-Control"] = "no-cache"
+        # "no-cache" was not enough, and the way it failed was invisible.
+        #
+        # index.html may be *stored* under no-cache as long as the browser
+        # revalidates. Revalidation uses the ETag, and Starlette derives that
+        # from the file's mtime and size — not its contents. Between two
+        # deploys index.html keeps exactly the same size (only the hash inside
+        # the script name changes, and that is the same length), so whenever the
+        # mtime matches too, the server answers 304 Not Modified. The browser
+        # then keeps yesterday's HTML, which points at yesterday's JavaScript,
+        # which it also still has because /assets is immutable for a year.
+        #
+        # Observed in production: the server served index-CH7H4QHf.js while the
+        # browser ran index-8S0EUaYl.js, for days, through several deploys.
+        #
+        # no-store forbids storing it at all, and dropping the validators means
+        # there is nothing left to answer 304 with. The entry point is a few
+        # kilobytes; re-fetching it every visit costs nothing next to shipping a
+        # stale app.
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        # Starlette's MutableHeaders has no .pop(); deleting a missing key
+        # raises. Both details are easy to get wrong and the failure mode is a
+        # 500 on every page load, so the membership check stays.
+        for validator in ("etag", "last-modified"):
+            if validator in response.headers:
+                del response.headers[validator]
 
     if config.IS_PRODUCTION:
         # Tell browsers to never speak plain HTTP to this host again.
