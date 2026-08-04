@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -186,12 +187,19 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Dieses Konto wurde deaktiviert.")
     if config.email_verification():
         if not verify_service.is_verified(user):
-            # 403 with a machine-readable marker so the login screen can switch
-            # straight to the code field instead of showing a dead end.
-            raise HTTPException(
+            # The marker lives in the response BODY, not only in a header.
+            # A custom header has to survive the proxy, the browser and the
+            # HTTP library before JavaScript ever sees it; a JSON field cannot
+            # go missing on the way. The header stays for older clients.
+            _log.info("Anmeldung abgelehnt, Konto unbestaetigt: %s", email)
+            return JSONResponse(
                 status_code=403,
-                detail="Bitte bestätige zuerst deine E-Mail-Adresse. "
-                       "Wir haben dir einen Code geschickt.",
+                content={
+                    "detail": "Bitte bestätige zuerst deine E-Mail-Adresse. "
+                              "Wir haben dir einen Code geschickt.",
+                    "needs_verification": True,
+                    "email": email,
+                },
                 headers={"X-Needs-Verification": "1"},
             )
     elif not verify_service.is_verified(user):

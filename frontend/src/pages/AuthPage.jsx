@@ -47,7 +47,7 @@ export default function AuthPage() {
     try {
       if (isRegister) {
         const res = await register(email, password, displayName, inviteCode)
-        if (res.access_token) {
+        if (res?.access_token) {
           // Confirmation is switched off on this server — already logged in.
           toast.success('Konto erstellt — willkommen!')
         } else {
@@ -63,8 +63,14 @@ export default function AuthPage() {
     } catch (err) {
       // A confirmed-account-required refusal is not an error the user can fix
       // by retrying — switch straight to the code step instead of scolding them.
-      if (err.response?.status === 403 && err.response.headers?.['x-needs-verification']) {
-        setPendingEmail(email)
+      // Body field first, header only as a fallback: see the note in
+      // routes/auth.py on why the header alone was not dependable.
+      const data = err.response?.data
+      const needsCode =
+        err.response?.status === 403 &&
+        (data?.needs_verification || err.response.headers?.['x-needs-verification'])
+      if (needsCode) {
+        setPendingEmail(data?.email || email)
         setMailSent(true)
         setCooldown(0)
         setCode('')
