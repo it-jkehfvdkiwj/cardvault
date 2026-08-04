@@ -349,6 +349,7 @@ def _to_api_shape(row: CatalogCard) -> dict:
             "total": row.printed_total,
         },
         "number": row.number,
+        "name_de": row.name_de,
         "rarity": row.rarity,
         "types": row.types.split(",") if row.types else [],
         "hp": row.hp,
@@ -403,6 +404,65 @@ def is_populated(db: Session) -> bool:
 
 
 # ── Images ────────────────────────────────────────────────────────────────────
+
+POKEAPI = os.getenv("POKEAPI_BASE", "https://pokeapi.co/api/v2")
+MAX_DEX = int(os.getenv("POKEDEX_MAX", "1025"))
+
+
+def fetch_german_names(db: Session, progress=None) -> dict:
+    """Fill in the German card names via the Pokédex number.
+
+    The TCG catalogue is English only. PokéAPI publishes every species under
+    all official localisations, keyed by national Pokédex number — which the
+    catalogue already stores — so one pass over the species list is enough to
+    give every card its German name.
+
+    Card names carry suffixes the species list does not have ("Dragapult ex",
+    "Charizard V"). Only the species part is replaced, so the suffix survives:
+    "Dragapult ex" becomes "Katapuldra ex".
+    """
+    names: dict[int, tuple[str, str]] = {}     # dex -> (english, german)
+    with httpx.Client(timeout=30) as client:
+        for dex in range(1, MAX_DEX + 1):
+            try:
+                data = _get_with_retry(
+                    client, f"{POKEAPI}/pokemon-species/{dex}", {}, f"Art {dex}"
+                )
+            except Exception:
+                continue
+            en = de = None
+            for entry in data.get("names") or []:
+                lang = ((entry.get("language") or {}).get("name") or "")
+                if lang == "en":
+                    en = entry.get("name")
+                elif lang == "de":
+                    de = entry.get("name")
+            if en and de:
+                names[dex] = (en, de)
+            if progress and dex % 100 == 0:
+                progress(dex, MAX_DEX)
+
+    updated = 0
+    for row in db.query(CatalogCard).filter(CatalogCard.national_dex.isnot(None)):
+        first = (row.national_dex or "").split(",")[0]
+        if not first.isdigit():
+            continue
+        pair = names.get(int(first))
+        if not pair or not row.name:
+            continue
+        en, de = pair
+        if en.lower() in row.name.lower():
+            # Case-insensitive replacement that keeps whatever follows.
+            idx = row.name.lower().index(en.lower())
+            new = row.name[:idx] + de + row.name[idx + len(en):]
+        else:
+            new = de
+        if row.name_de != new:
+            row.name_de = new
+            updated += 1
+    db.commit()
+    return {"species": len(names), "cards_updated": updated}
+
 
 def build_phash_index(
     db: Session, limit: int | None = None, progress=None, rebuild: bool = False,

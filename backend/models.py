@@ -247,6 +247,11 @@ class CatalogCard(Base):
     # what actually differs, and matching on it is what separates two cards from
     # the same set.
     phash_art = Column(String)
+    # German card name, built from the species name for the card's Pokédex
+    # number. The catalogue itself is English-only, and showing "Eevee" for a
+    # card that says "Evoli" reads as a wrong identification even when it is
+    # right — four of seven reported "errors" were exactly this.
+    name_de = Column(String)
     updated_at = Column(DateTime, server_default=func.now())
 
 

@@ -143,6 +143,19 @@ def cmd_hashes(db, args) -> int:
     return 0
 
 
+def cmd_names(db) -> int:
+    print("Hole die deutschen Pokemon-Namen. Das dauert ein paar Minuten.", flush=True)
+    started = time.time()
+
+    def progress(done, total):
+        print(f"  {done}/{total}", flush=True)
+
+    res = catalog_service.fetch_german_names(db, progress=progress)
+    print(f"\nFertig in {time.time() - started:.0f}s: {res['species']} Arten, "
+          f"{res['cards_updated']} Karten benannt.")
+    return 0
+
+
 def cmd_relink(db) -> int:
     try:
         res = catalog_service.relink_collection(db)
@@ -165,6 +178,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     sub.add_parser("relink")
+    sub.add_parser("names")
     p_hash = sub.add_parser("hashes")
     p_hash.add_argument("--limit", type=int, default=None)
     p_hash.add_argument("--rebuild", action="store_true",
@@ -190,6 +204,8 @@ def main() -> int:
             return cmd_relink(db)
         if args.cmd == "hashes":
             return cmd_hashes(db, args)
+        if args.cmd == "names":
+            return cmd_names(db)
     finally:
         db.close()
     return 0

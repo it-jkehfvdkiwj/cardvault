@@ -49,6 +49,15 @@ function confidenceOf(r) {
   return 'likely'
 }
 
+/** German cards should show their German name. The catalogue is English, so a
+ *  correct hit on "Evoli" displayed "Eevee" and read as a mistake — four of
+ *  seven reported misidentifications were exactly this and nothing else. */
+function displayName(cand, result) {
+  if (!cand) return null
+  const wantsGerman = (result?.detected_language || 'EN') === 'DE'
+  return (wantsGerman && cand.name_de) || cand.name
+}
+
 const CONF_STYLE = {
   sure: { label: 'Sicher', cls: 'bg-emerald-50 text-emerald-800 border-emerald-300' },
   likely: { label: 'Wahrscheinlich', cls: 'bg-amber-50 text-amber-800 border-amber-300' },
@@ -192,7 +201,9 @@ export default function UploadPage() {
   function payloadFor(r, cand) {
     return {
       tcg_card_id: cand.id,
-      name: cand.name,
+      // Store what the card actually says, so the collection and the eBay
+      // title match the physical card in the seller's hand.
+      name: ((r.detected_language || 'EN') === 'DE' && cand.name_de) || cand.name,
       set_name: cand.set?.name,
       set_code: cand.set?.id,
       rarity: cand.rarity,
@@ -497,7 +508,7 @@ export default function UploadPage() {
                       disabled={!r.candidates?.length}
                       checked={Boolean(picks[i]?.on && r.candidates?.length)}
                       onChange={(e) => setPicks((p) => ({ ...p, [i]: { ...p[i], on: e.target.checked } }))}
-                      aria-label={`${cand?.name || r.filename} auswählen`}
+                      aria-label={`${displayName(cand, r) || r.filename} auswählen`}
                     />
                   )}
 
@@ -515,7 +526,7 @@ export default function UploadPage() {
 
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm font-semibold truncate ${saved ? 'text-ink-3 line-through' : ''}`}>
-                      {saved?.name || cand?.name || r.error || 'Nicht erkannt'}
+                      {saved?.name || displayName(cand, r) || r.error || 'Nicht erkannt'}
                     </p>
                     <p className="text-xs text-ink-3 truncate">
                       {cand?.set?.name || r.ocr_name || r.filename}
