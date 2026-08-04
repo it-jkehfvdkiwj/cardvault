@@ -26,6 +26,78 @@ class ExportRequest(BaseModel):
     options: Optional[dict] = None
 
 
+class PriceEntry(BaseModel):
+    card_id: int
+    price: Optional[float] = None      # None clears it back to the suggestion
+
+
+class BulkPrices(BaseModel):
+    prices: list[PriceEntry]
+
+
+@router.put("/prices")
+def set_prices(
+    payload: BulkPrices,
+    db: Session = Depends(get_db),
+    user: User = Depends(auth_service.get_current_user),
+):
+    """Store the seller's own prices for many cards in one request.
+
+    The selling table sends every edited row at once instead of one request per
+    card — a hundred cards used to mean a hundred round trips, which is exactly
+    what made pricing feel like work.
+    """
+    ids = [e.card_id for e in payload.prices]
+    owned = {
+        c.id: c for c in db.query(Card).filter(
+            Card.user_id == user.id, Card.id.in_(ids)
+        )
+    }
+    changed = 0
+    for entry in payload.prices:
+        card = owned.get(entry.card_id)
+        if not card:
+            continue                    # not this user's card — silently ignored
+        value = None
+        if entry.price is not None and entry.price > 0:
+            value = round(min(float(entry.price), 999_999.0), 2)
+        if card.sale_price != value:
+            card.sale_price = value
+            changed += 1
+    db.commit()
+    return {"changed": changed, "ignored": len(payload.prices) - len(owned)}
+
+
+class SaleOptions(BaseModel):
+    options: dict
+
+
+@router.get("/options")
+def get_options(
+    db: Session = Depends(get_db),
+    user: User = Depends(auth_service.get_current_user),
+):
+    from services import sale_settings
+
+    return {
+        "options": sale_settings.options_of(user),
+        "sites": list(ebay_service.SITES.keys()),
+    }
+
+
+@router.put("/options")
+def put_options(
+    payload: SaleOptions,
+    db: Session = Depends(get_db),
+    user: User = Depends(auth_service.get_current_user),
+):
+    from services import sale_settings
+
+    opts = sale_settings.update(user, payload.options)
+    db.commit()
+    return {"options": opts}
+
+
 @router.get("/status")
 def ebay_status(
     db: Session = Depends(get_db),

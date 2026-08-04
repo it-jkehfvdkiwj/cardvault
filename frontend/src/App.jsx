@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
   Upload, Grid, Star, BarChart2, Vault, LogOut, Loader,
-  User as UserIcon, Shield, Crown, LayoutDashboard, Menu, X,
+  User as UserIcon, Shield, Crown, LayoutDashboard, Menu, X, ShoppingBag,
 } from 'lucide-react'
 // Eagerly loaded: the screens a user hits immediately after login.
 import DashboardPage from './pages/DashboardPage'
@@ -21,6 +21,7 @@ const CardDetailPage = lazy(() => import('./pages/CardDetailPage'))
 const WantlistPage = lazy(() => import('./pages/WantlistPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
 const AccountPage = lazy(() => import('./pages/AccountPage'))
+const SellPage = lazy(() => import('./pages/SellPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 const PricingPage = lazy(() => import('./pages/PricingPage'))
 const ImpressumPage = lazy(() =>
@@ -46,6 +47,7 @@ const NAV = [
   { to: '/dashboard', label: 'Übersicht', icon: LayoutDashboard },
   { to: '/upload', label: 'Scannen', icon: Upload },
   { to: '/collection', label: 'Sammlung', icon: Grid },
+  { to: '/sell', label: 'Verkaufen', icon: ShoppingBag },
   { to: '/wantlist', label: 'Wantlist', icon: Star },
   { to: '/stats', label: 'Statistik', icon: BarChart2 },
   { to: '/account', label: 'Konto', icon: UserIcon },
@@ -204,6 +206,7 @@ export default function App() {
               <Route path="/u/:slug" element={<PublicCollectionPage />} />
               <Route path="/upload" element={<UploadPage />} />
               <Route path="/collection" element={<CollectionPage />} />
+              <Route path="/sell" element={<SellPage />} />
               <Route path="/card/:id" element={<CardDetailPage />} />
               <Route path="/wantlist" element={<WantlistPage />} />
               <Route path="/stats" element={<StatsPage />} />

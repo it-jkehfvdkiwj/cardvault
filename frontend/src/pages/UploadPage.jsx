@@ -309,6 +309,21 @@ export default function UploadPage() {
                   {plan.join(' → ')}
                 </p>
               )}
+              {/* The plan editor used to live only in the account settings,
+                  which is why nobody found it and everyone stayed on two
+                  photos. The way in belongs where the plan is visible. */}
+              {m.id === 'plan' && mode === 'plan' && (
+                <span
+                  role="link" tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); navigate('/sell') }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.stopPropagation(); navigate('/sell') }
+                  }}
+                  className="text-[11px] text-accent-ink hover:underline mt-1 inline-block cursor-pointer"
+                >
+                  Aufnahmen ändern →
+                </span>
+              )}
             </button>
           )
         })}

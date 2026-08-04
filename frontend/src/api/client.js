@@ -276,6 +276,14 @@ export const ebayApi = {
   preview: (payload) => api.post('/ebay/preview', payload),
   exportCsv: (payload) =>
     api.post('/ebay/export/csv', payload, { responseType: 'blob' }),
+  /**
+   * Store own prices for many cards at once.
+   * @param {{card_id:number, price:number|null}[]} prices — null clears a price
+   *   back to the calculated suggestion.
+   */
+  setPrices: (prices) => api.put('/ebay/prices', { prices }),
+  getOptions: () => api.get('/ebay/options'),
+  setOptions: (options) => api.put('/ebay/options', { options }),
 }
 
 // Multi-marketplace hub: exports, account linking, cross-listing, sold-sync.

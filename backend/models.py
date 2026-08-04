@@ -50,6 +50,12 @@ class User(Base):
     # or invalid falls back to services.photo_plan.DEFAULT_PLAN.
     sale_photo_plan = Column(Text)
 
+    # Listing defaults, kept per seller instead of being re-entered on every
+    # export: marketplace, shipping, location and the pricing rule. Stored as
+    # JSON so a new option does not need a migration — see
+    # services/sale_settings.py for the shape and the defaults.
+    sale_options = Column(Text)
+
     # E-mail confirmation. Until email_verified_at is set the account cannot log
     # in. The code itself is never stored — only a hash, same reasoning as for
     # passwords: a leaked database must not hand out working codes.
@@ -104,6 +110,11 @@ class Card(Base):
     price_low_eur = Column(Float)
     price_trend_eur = Column(Float)
     price_updated_at = Column(DateTime)
+    # Price the seller decided on, in the marketplace currency. Overrides the
+    # value computed from market data — set it once, and neither a price
+    # refresh nor a changed multiplier moves it again. NULL = use the
+    # calculated suggestion.
+    sale_price = Column(Float)
     added_at = Column(DateTime, server_default=func.now())
 
     # Loaded eagerly: every place that reads a card for a listing needs its

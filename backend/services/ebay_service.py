@@ -84,8 +84,8 @@ def default_options() -> dict:
 
 # ── Pricing ────────────────────────────────────────────────────────────────────
 
-def compute_price(card: Card, opts: dict) -> float:
-    """Suggested list price for a card, in the marketplace currency."""
+def suggest_price(card: Card, opts: dict) -> float:
+    """Price derived from market data — what the seller is offered as a start."""
     base = card.price_trend_eur or card.market_price_eur or card.price_low_eur
     if base is None and card.market_price_usd:
         base = card.market_price_usd * opts["usd_eur_rate"]
@@ -102,6 +102,19 @@ def compute_price(card: Card, opts: dict) -> float:
             candidate += 1
         price = candidate
     return round(price, 2)
+
+
+def compute_price(card: Card, opts: dict) -> float:
+    """The price this card will actually be listed at.
+
+    A price the seller typed in wins over the calculated one, always. Without
+    that rule a price refresh, or nudging the multiplier for a different batch,
+    would silently overwrite decisions already made — which is the opposite of
+    what a manual price is for.
+    """
+    if card.sale_price is not None and card.sale_price > 0:
+        return round(float(card.sale_price), 2)
+    return suggest_price(card, opts)
 
 
 # ── Photos ─────────────────────────────────────────────────────────────────────
@@ -311,9 +324,7 @@ def build_listing_csv(
     for_trade_only:  if True, only cards flagged for_trade are exported
     options:         overrides merged over default_options()
     """
-    opts = default_options()
-    if options:
-        opts.update({k: v for k, v in options.items() if v is not None})
+    opts = _effective_options(db, user_id, options)
 
     q = db.query(Card).filter(Card.user_id == user_id)
     if card_ids:
@@ -388,9 +399,7 @@ def preview_listings(
     options: dict | None = None,
 ) -> list[dict]:
     """Return a JSON-friendly preview (title + price) without building the CSV."""
-    opts = default_options()
-    if options:
-        opts.update({k: v for k, v in options.items() if v is not None})
+    opts = _effective_options(db, user_id, options)
 
     q = db.query(Card).filter(Card.user_id == user_id)
     if card_ids:
@@ -416,6 +425,12 @@ def preview_listings(
             "id": c.id,
             "title": build_title(c),
             "price": price,
+            "suggested_price": suggest_price(c, opts),
+            "own_price": c.sale_price,
+            "name": c.name,
+            "set_name": c.set_name,
+            "condition": c.condition,
+            "for_trade": bool(c.for_trade),
             "currency": SITES.get(opts["site"], SITES["DE"])[2],
             "quantity": c.quantity or 1,
             "image_url": photos[0] if photos else c.image_url,
@@ -427,6 +442,18 @@ def preview_listings(
             "warnings": listing_warnings(c, photos, price, opts),
         })
     return out
+
+
+def _effective_options(db: Session, user_id: int, override: dict | None) -> dict:
+    """Env defaults, then the seller's saved options, then this request's."""
+    from models import User
+    from services import sale_settings
+
+    user = db.query(User).filter(User.id == user_id).first()
+    opts = sale_settings.options_of(user) if user else default_options()
+    if override:
+        opts.update(sale_settings.clean(override))
+    return opts
 
 
 def _text_blocks(db: Session, user_id: int) -> tuple[str | None, str | None]:

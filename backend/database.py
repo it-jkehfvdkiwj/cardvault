@@ -59,7 +59,10 @@ def run_migrations() -> None:
 
     # ── Portable additive columns (SQLite + Postgres) ─────────────────────────
     portable = {
-        "cards": [("photo_front", "VARCHAR"), ("photo_back", "VARCHAR")],
+        "cards": [
+            ("photo_front", "VARCHAR"), ("photo_back", "VARCHAR"),
+            ("sale_price", "FLOAT"),
+        ],
         "users": [
             ("sale_photos_per_card", "INTEGER DEFAULT 1"),
             ("password_changed_at", "TIMESTAMP"),
@@ -67,6 +70,7 @@ def run_migrations() -> None:
             ("sale_intro", "TEXT"),
             ("sale_outro", "TEXT"),
             ("sale_photo_plan", "TEXT"),
+            ("sale_options", "TEXT"),
             ("email_verified_at", "TIMESTAMP"),
             ("verify_code_hash", "VARCHAR"),
             ("verify_sent_at", "TIMESTAMP"),
