@@ -5,6 +5,7 @@ Command line for the local card catalogue.
     docker compose exec backend python catalog_cli.py import
     docker compose exec backend python catalog_cli.py images --kind small
     docker compose exec backend python catalog_cli.py images --kind large --limit 500
+    docker compose exec backend python catalog_cli.py relink
 
 Note the path: the image sets WORKDIR=/app/backend, so the script is addressed
 without a "backend/" prefix — "backend/catalog_cli.py" resolves to
@@ -120,10 +121,28 @@ def cmd_images(db, args) -> int:
     return 0
 
 
+def cmd_relink(db) -> int:
+    try:
+        res = catalog_service.relink_collection(db)
+    except RuntimeError as exc:
+        print(f"Abbruch: {exc}")
+        return 1
+    print(
+        f"{res['changed']} Karten deiner Sammlung zeigen jetzt auf lokale Bilder."
+    )
+    if res["no_local_image"]:
+        print(
+            f"{res['no_local_image']} Karten haben (noch) kein lokales Bild — "
+            "erst 'images' laufen lassen."
+        )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Lokaler Kartenkatalog")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
+    sub.add_parser("relink")
     p_imp = sub.add_parser("import")
     p_imp.add_argument("--pages", type=int, default=None, dest="pages",
                        help="nur so viele SETS laden (zum Ausprobieren)")
@@ -141,6 +160,8 @@ def main() -> int:
             return cmd_import(db, args)
         if args.cmd == "images":
             return cmd_images(db, args)
+        if args.cmd == "relink":
+            return cmd_relink(db)
     finally:
         db.close()
     return 0

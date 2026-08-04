@@ -397,6 +397,46 @@ def is_populated(db: Session) -> bool:
 
 # ── Images ────────────────────────────────────────────────────────────────────
 
+def relink_collection(db: Session) -> dict:
+    """Point existing collection cards at the locally stored artwork.
+
+    Cards store their picture URL at the moment they are added, so everything
+    added before the catalogue existed still refers to the API's CDN. Those
+    rows would show empty frames the day that CDN goes away — even though the
+    same image is already sitting on this disk. This rewrites them.
+
+    The URL is made absolute via APP_BASE_URL, not left as "/catalog-images/…":
+    the eBay export only accepts absolute http(s) picture URLs and silently
+    drops anything else, so a relative path would fix the website and quietly
+    break the listings.
+    """
+    from models import Card
+
+    base = (os.getenv("APP_BASE_URL") or "").rstrip("/")
+    if not base:
+        raise RuntimeError(
+            "APP_BASE_URL ist nicht gesetzt — ohne sie kann keine absolute "
+            "Bildadresse gebildet werden."
+        )
+
+    local = {
+        r.id: r.local_image
+        for r in db.query(CatalogCard).filter(CatalogCard.local_image.isnot(None))
+    }
+    changed = skipped = 0
+    for card in db.query(Card).filter(Card.tcg_card_id.isnot(None)):
+        fname = local.get(card.tcg_card_id)
+        if not fname:
+            skipped += 1
+            continue
+        new_url = f"{base}/catalog-images/{fname}"
+        if card.image_url != new_url:
+            card.image_url = new_url
+            changed += 1
+    db.commit()
+    return {"changed": changed, "no_local_image": skipped}
+
+
 def free_bytes() -> int:
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     return shutil.disk_usage(IMAGE_DIR).free
