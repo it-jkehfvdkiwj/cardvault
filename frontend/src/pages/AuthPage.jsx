@@ -7,7 +7,7 @@ import { authApi } from '../api/client'
 
 export default function AuthPage() {
   const { login, register, verify } = useAuth()
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const [mode, setMode] = useState(
     params.get('mode') === 'register' ? 'register' : 'login',
   ) // 'login' | 'register'
@@ -19,12 +19,30 @@ export default function AuthPage() {
   // Whether registration is currently invite-only. Asked once on mount so the
   // form can say so upfront instead of rejecting a filled-in form with a 403.
   const [privateBeta, setPrivateBeta] = useState(false)
-  // Set once an account exists but its address isn't confirmed yet. While this
-  // holds an address the form shows the code field instead of the credentials.
-  const [pendingEmail, setPendingEmail] = useState(null)
+  // The pending-confirmation step lives in the URL (?verify=<adresse>), not in
+  // component state. Ordinary state was being lost between the successful
+  // registration and the next render — the request went through, the mail
+  // arrived, and the page just sat there. Anything that remounts this screen
+  // (a suspense boundary, an auth reset, a stray reload) took the step with it.
+  // A query parameter survives all of that, and a refresh lands the user back
+  // on the code field instead of an empty form.
+  const pendingEmail = params.get('verify') || null
+
   const [code, setCode] = useState('')
   const [mailSent, setMailSent] = useState(true)
   const [cooldown, setCooldown] = useState(0)
+
+  function startVerification(mail, { sent = true, wait = 60 } = {}) {
+    setMailSent(sent)
+    setCooldown(wait)
+    setCode('')
+    setParams({ mode: 'register', verify: mail }, { replace: true })
+  }
+
+  function cancelVerification() {
+    setCode('')
+    setParams({ mode: 'register' }, { replace: true })
+  }
 
   useEffect(() => {
     if (cooldown <= 0) return
@@ -51,10 +69,10 @@ export default function AuthPage() {
           // Confirmation is switched off on this server — already logged in.
           toast.success('Konto erstellt — willkommen!')
         } else {
-          setPendingEmail(res.email || email)
-          setMailSent(res.mail_sent !== false)
-          setCooldown(res.resend_in || 60)
-          setCode('')
+          startVerification(res?.email || email, {
+            sent: res?.mail_sent !== false,
+            wait: res?.resend_in || 60,
+          })
         }
       } else {
         await login(email, password)
@@ -70,10 +88,7 @@ export default function AuthPage() {
         err.response?.status === 403 &&
         (data?.needs_verification || err.response.headers?.['x-needs-verification'])
       if (needsCode) {
-        setPendingEmail(data?.email || email)
-        setMailSent(true)
-        setCooldown(0)
-        setCode('')
+        startVerification(data?.email || email, { sent: true, wait: 0 })
       } else {
         toast.error(err.response?.data?.detail || 'Etwas ist schiefgelaufen')
       }
@@ -168,7 +183,7 @@ export default function AuthPage() {
                 {cooldown > 0 ? `Neuer Code in ${cooldown} s` : 'Neuen Code senden'}
               </button>
               <button
-                onClick={() => { setPendingEmail(null); setCode('') }}
+                onClick={cancelVerification}
                 className="text-ink-3 hover:text-ink flex items-center gap-1"
               >
                 <ArrowLeft className="w-3 h-3" /> Andere Adresse
