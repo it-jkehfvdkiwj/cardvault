@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { Vault, Loader, Mail, Lock, User as UserIcon, KeyRound, Lock as LockIcon, ShieldCheck, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { authApi } from '../api/client'
+import { BUILD_STAMP } from '../main'
 
 export default function AuthPage() {
   const { login, register, verify } = useAuth()
@@ -65,6 +66,9 @@ export default function AuthPage() {
     try {
       if (isRegister) {
         const res = await register(email, password, displayName, inviteCode)
+        // Deliberately loud: this is the exact step that went missing in
+        // production, with a 200 on the wire and nothing on screen.
+        console.info('[Cardeva] Registrierung beantwortet:', res)
         if (res?.access_token) {
           // Confirmation is switched off on this server — already logged in.
           toast.success('Konto erstellt — willkommen!')
@@ -73,12 +77,14 @@ export default function AuthPage() {
             sent: res?.mail_sent !== false,
             wait: res?.resend_in || 60,
           })
+          console.info('[Cardeva] Bestaetigungsschritt gestartet fuer', res?.email || email)
         }
       } else {
         await login(email, password)
         toast.success('Willkommen zurück!')
       }
     } catch (err) {
+      console.warn('[Cardeva] Anmeldung/Registrierung fehlgeschlagen:', err)
       // A confirmed-account-required refusal is not an error the user can fix
       // by retrying — switch straight to the code step instead of scolding them.
       // Body field first, header only as a fallback: see the note in
@@ -290,6 +296,9 @@ export default function AuthPage() {
         )}
         <p className="text-center text-xs text-ink-4 mt-2">
           <Link to="/" className="hover:text-ink-2">← Zurück zur Startseite</Link>
+        </p>
+        <p className="text-center text-[10px] text-ink-4/70 mt-3" title="Stand des im Browser laufenden Frontends">
+          Build {BUILD_STAMP}
         </p>
         <p className="text-center text-xs text-ink-4 mt-4 space-x-3">
           <Link to="/impressum" className="hover:text-ink-2">Impressum</Link>

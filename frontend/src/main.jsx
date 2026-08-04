@@ -7,6 +7,10 @@ import { AuthProvider } from './auth/AuthContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import './index.css'
 
+// eslint-disable-next-line no-undef
+export const BUILD_STAMP = typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : 'dev'
+console.info(`[Cardeva] Frontend-Stand: ${BUILD_STAMP}`)
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
