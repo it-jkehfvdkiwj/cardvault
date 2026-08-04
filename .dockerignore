@@ -1,0 +1,42 @@
+# What must NOT go into the build context.
+#
+# Without this file Docker ships the entire working directory to the daemon —
+# including frontend/node_modules and frontend/dist. Both are actively harmful:
+#
+#   node_modules is installed on Windows, so it carries win32 binaries for
+#   esbuild and rollup. The Dockerfile installs Linux ones with `npm ci` and the
+#   later `COPY frontend/ ./` then copies the Windows tree straight over them.
+#
+#   dist is a build output. Shipping a stale one into the image and hoping the
+#   build overwrites it is exactly the sort of thing that makes a deploy
+#   "succeed" while serving yesterday's JavaScript.
+#
+# It also makes the context a few hundred megabytes instead of a few, which is
+# most of the build time on a small server.
+
+.git
+.gitignore
+
+# Node
+**/node_modules
+frontend/dist
+
+# Python
+**/__pycache__
+**/*.py[cod]
+.venv
+venv
+
+# Local data that must never end up in an image
+.env
+*.db
+backend/uploads
+backend/data
+backend/catalog_images
+
+# Editor / OS noise
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.log
